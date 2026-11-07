@@ -4,15 +4,12 @@ use std::fmt::Write as _;
 use std::io::IsTerminal;
 use std::path::PathBuf;
 
-use serde::Serialize;
-use spacetrail_cleaners::detectors::{self, DEFAULT_CODE_ROOTS};
-use spacetrail_cleaners::suggest::{self, Claims, Context, Suggestion};
-use spacetrail_cleaners::{Risk, catalog};
-use spacetrail_core::{Dirs, VolumeRole};
-use spacetrail_macos::FdaStatus;
+use spacetrail_cleaners::Risk;
+use spacetrail_cleaners::report::{self, SuggestOptions, SuggestReport as Report};
+use spacetrail_cleaners::suggest::Suggestion;
+use spacetrail_core::Dirs;
 
 use super::Ctx;
-use super::status;
 use crate::render::pct;
 
 /// Options of `spacetrail suggest`.
@@ -28,154 +25,38 @@ pub(crate) struct Options {
     pub(crate) roots: Vec<PathBuf>,
 }
 
-#[derive(Debug, Serialize)]
-struct Report {
-    disk: status::Status,
-    totals: Totals,
-    suggestions: Vec<Suggestion>,
-    advice: Vec<String>,
-    catalog_problems: Vec<String>,
-}
-
-#[derive(Debug, Default, Serialize)]
-struct Totals {
-    safe: u64,
-    review: u64,
-    manual: u64,
-}
-
-fn progress(ctx: &Ctx, msg: &str) {
-    if !ctx.json && std::io::stderr().is_terminal() {
-        eprint!("\r\x1b[2K{msg}…");
-    }
-}
-
 fn collect(ctx: &Ctx, opts: &Options) -> anyhow::Result<Report> {
     let home = ctx
         .home
         .clone()
         .ok_or_else(|| anyhow::anyhow!("HOME is not set"))?;
-    let disk = status::collect(ctx)?;
-    let sys = Context::from_system(home.clone());
-    let cat = catalog::load(Dirs::from_env().map(|d| d.user_cleaners()).as_deref());
-    let mut claims = Claims::default();
-    let mut out: Vec<Suggestion> = Vec::new();
-    let min_detector = opts.min_bytes;
-
-    progress(ctx, "Asking Docker what it can free");
-    out.extend(detectors::docker(&sys, &mut claims));
-
-    progress(ctx, "Looking for worktrees and stale project artifacts");
-    let roots: Vec<PathBuf> = if opts.roots.is_empty() {
-        DEFAULT_CODE_ROOTS
-            .iter()
-            .filter_map(|r| sys.expand(r))
-            .map(PathBuf::from)
-            .filter(|p| p.is_dir())
-            .collect()
-    } else {
-        opts.roots.clone()
-    };
-    out.extend(detectors::projects(
-        &sys,
-        &cat.cleaners,
-        &roots,
-        &mut claims,
-    ));
-
-    progress(ctx, "Checking editors");
-    out.extend(detectors::orphaned_workspaces(&sys, &mut claims));
-    out.extend(detectors::agent_versions(&sys, &mut claims));
-
-    progress(ctx, "Measuring caches, logs and tool data");
-    let mut rules: Vec<_> = cat
-        .cleaners
-        .iter()
-        .filter(|(c, _)| c.project.is_none())
-        .cloned()
-        .collect();
-    suggest::order_by_specificity(&mut rules);
-    for (c, src) in &rules {
-        if let Some(s) = suggest::evaluate(c, *src, &sys, &mut claims, 1) {
-            out.push(s);
+    let show = !ctx.json && std::io::stderr().is_terminal();
+    let progress = |msg: &str| {
+        if show {
+            eprint!("\r\x1b[2K{msg}…");
         }
-    }
-
-    progress(ctx, "Looking at large app data");
-    out.extend(detectors::large_app_data(
-        &sys,
-        &claims,
-        2_000_000_000.max(min_detector),
-    ));
-    progress(ctx, "");
-    if !ctx.json && std::io::stderr().is_terminal() {
+    };
+    let user = Dirs::from_env().map(|d| d.user_cleaners());
+    let r = report::run(
+        &SuggestOptions {
+            risks: opts.risks.clone(),
+            min_bytes: opts.min_bytes,
+            roots: opts.roots.clone(),
+        },
+        &home,
+        user.as_deref(),
+        &progress,
+    )?;
+    if show {
         eprint!("\r\x1b[2K");
     }
-
-    out.retain(|s| {
-        s.bytes >= opts.min_bytes && (opts.risks.is_empty() || opts.risks.contains(&s.risk))
-    });
-    out.sort_by(|a, b| a.risk.cmp(&b.risk).then(b.bytes.cmp(&a.bytes)));
-    let mut totals = Totals::default();
-    for s in &out {
-        match s.risk {
-            Risk::Safe => totals.safe += s.bytes,
-            Risk::Review => totals.review += s.bytes,
-            Risk::Manual => totals.manual += s.bytes,
-        }
-    }
-    let advice = advice(ctx, &disk, &out);
-    Ok(Report {
-        disk,
-        totals,
-        suggestions: out,
-        advice,
-        catalog_problems: cat.problems,
-    })
-}
-
-/// Things worth knowing that are not deletable items.
-fn advice(ctx: &Ctx, disk: &status::Status, out: &[Suggestion]) -> Vec<String> {
-    let b = |n| ctx.style.bytes(n);
-    let mut a = Vec::new();
-    if let Some(c) = &disk.container {
-        if let Some(vm) = c.volumes.iter().find(|v| v.role == VolumeRole::Vm) {
-            if vm.consumed >= 8_000_000_000 {
-                a.push(format!(
-                    "Swap uses {} because memory is under pressure. It is not deletable; it shrinks when you quit memory-hungry apps (Docker, local LLMs, many browser tabs) or restart. Lowering Docker Desktop's memory limit helps most.",
-                    b(vm.consumed)
-                ));
-            }
-        }
-    }
-    match &disk.full_disk_access {
-        FdaStatus::Granted => {}
-        _ => a.push(
-            "The Trash and some app folders can't be measured without Full Disk Access. Items you moved to the Trash still use space until you empty it (Finder → Empty Trash). See `spacetrail doctor` to grant access."
-                .into(),
-        ),
-    }
-    if out
-        .iter()
-        .any(|s| s.id.ends_with("-logs") && s.bytes >= 2_000_000_000)
-    {
-        a.push("Editor logs reached several GB: an extension is logging heavily. Look at `spacetrail top ~/Library/Application\\ Support/Code/logs` to find it and lower its log level (e.g. C# Dev Kit), or the logs will grow back.".into());
-    }
-    if out.iter().any(|s| s.id == "git-worktrees") {
-        a.push("Coding agents create a git worktree per task. Removing worktrees after their branch is merged keeps them from piling up.".into());
-    }
-    a
+    Ok(r)
 }
 
 fn render(ctx: &Ctx, r: &Report, opts: &Options) -> String {
     let b = |n| ctx.style.bytes(n);
     let mut o = String::new();
-    let v = &r.disk.volume;
-    let (total, free) = r
-        .disk
-        .container
-        .as_ref()
-        .map_or((v.total, v.free), |c| (c.total, c.free));
+    let (total, free) = r.disk.total_free();
     let used = total.saturating_sub(free);
     let warn = if free * 10 < total {
         "  ⚠ almost full"

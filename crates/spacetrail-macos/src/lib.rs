@@ -14,6 +14,7 @@ pub mod hints;
 pub mod mounts;
 mod probe;
 pub mod process;
+pub mod system;
 pub mod volume;
 
 pub use dataless::{MacPlatform, prevent_materialization};

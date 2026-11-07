@@ -7,6 +7,7 @@
 pub mod catalog;
 pub mod detectors;
 pub mod pattern;
+pub mod report;
 pub mod schema;
 pub mod suggest;
 

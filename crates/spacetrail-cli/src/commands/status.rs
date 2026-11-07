@@ -2,30 +2,13 @@
 
 use std::fmt::Write as _;
 
-use serde::Serialize;
-use spacetrail_core::{Container, VolumeStats};
-use spacetrail_macos::{FdaStatus, apfs, fda, volume, whole_disk_root};
+use spacetrail_macos::FdaStatus;
+use spacetrail_macos::system::{DiskStatus, disk_status};
 
 use super::Ctx;
 use crate::render::{Align, pct, table};
 
-#[derive(Debug, Serialize)]
-pub(crate) struct Status {
-    pub(crate) volume: VolumeStats,
-    pub(crate) container: Option<Container>,
-    pub(crate) full_disk_access: FdaStatus,
-}
-
-pub(crate) fn collect(ctx: &Ctx) -> anyhow::Result<Status> {
-    let root = whole_disk_root();
-    Ok(Status {
-        volume: volume::volume_stats(&root)?,
-        container: apfs::container_of(&root).ok(),
-        full_disk_access: ctx.home.as_deref().map_or(FdaStatus::Unknown, fda::probe),
-    })
-}
-
-pub(crate) fn render(ctx: &Ctx, s: &Status) -> String {
+pub(crate) fn render(ctx: &Ctx, s: &DiskStatus) -> String {
     let b = |n| ctx.style.bytes(n);
     let v = &s.volume;
     let (total, free) = s
@@ -102,6 +85,6 @@ pub(crate) fn render(ctx: &Ctx, s: &Status) -> String {
 }
 
 pub(crate) fn run(ctx: &Ctx) -> anyhow::Result<()> {
-    let s = collect(ctx)?;
+    let s = disk_status(ctx.home.as_deref())?;
     ctx.emit(&s, || render(ctx, &s))
 }
