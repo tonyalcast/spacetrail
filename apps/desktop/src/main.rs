@@ -296,6 +296,43 @@ async fn explain(path: String, hint: Option<facts::Hint>) -> Result<Explanation,
     })
 }
 
+fn journal() -> Result<spacetrail_cleaners::executor::Journal, String> {
+    let dirs = spacetrail_core::Dirs::from_env().ok_or("HOME is not set")?;
+    Ok(spacetrail_cleaners::executor::Journal::new(
+        dirs.data.join("trash-journal.jsonl"),
+    ))
+}
+
+/// Moves one item to the Trash through the single executor (safety checks,
+/// re-validation, journal). Never deletes permanently.
+#[tauri::command]
+async fn trash_item(
+    path: String,
+    bytes: u64,
+    source: String,
+) -> Result<spacetrail_cleaners::executor::TrashRecord, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let home = home()?;
+        spacetrail_cleaners::executor::trash(
+            Path::new(&path),
+            &home,
+            &spacetrail_cleaners::executor::FinderTrash,
+            &journal()?,
+            bytes,
+            &format!("app: {source}"),
+        )
+        .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Puts an item moved by spacetrail back where it was.
+#[tauri::command]
+fn undo_trash(id: String) -> Result<spacetrail_cleaners::executor::TrashRecord, String> {
+    spacetrail_cleaners::executor::restore(&id, &journal()?).map_err(|e| e.to_string())
+}
+
 fn main() {
     // Never download cloud files, whatever happens below.
     let _ = spacetrail_macos::prevent_materialization();
@@ -313,7 +350,9 @@ fn main() {
             save_settings,
             set_api_key,
             list_models,
-            explain
+            explain,
+            trash_item,
+            undo_trash
         ])
         .run(tauri::generate_context!())
         .expect("error while running spacetrail");

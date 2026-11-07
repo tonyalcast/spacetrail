@@ -1,11 +1,12 @@
 //! Declarative cleaners for spacetrail: TOML schema, loader, validator,
-//! read-only suggestions, and (later) the single executor that is allowed to
-//! delete files or spawn processes (see `CLAUDE.md`, safety rule 2).
+//! read-only suggestions, and the single executor that is allowed to remove
+//! files (to the Trash, with a journal and undo) (see `CLAUDE.md`, safety rule 2).
 
 #![forbid(unsafe_code)]
 
 pub mod catalog;
 pub mod detectors;
+pub mod executor;
 pub mod pattern;
 pub mod report;
 pub mod schema;

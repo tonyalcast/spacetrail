@@ -58,12 +58,52 @@ fn check_safety() -> anyhow::Result<()> {
             }
         }
     })?;
+    // Removal primitives: only the executor may call the Trash; nobody may
+    // call Foundation's permanent delete.
+    visit(&root.join("crates"), &mut |path| {
+        let rel = path.strip_prefix(root).unwrap_or(path);
+        if rel.extension().is_none_or(|e| e != "rs") {
+            return;
+        }
+        let Ok(text) = std::fs::read_to_string(path) else {
+            return;
+        };
+        let trash_ok = rel.starts_with("crates/spacetrail-cleaners/src/executor")
+            || rel.starts_with("crates/spacetrail-macos/src/trash.rs");
+        for (i, line) in text.lines().enumerate() {
+            let calls_trash = line.contains("move_to_trash(") || line.contains("trashItemAtURL");
+            if (calls_trash && !trash_ok) || line.contains("removeItemAtURL") {
+                offenders.push(format!("{}:{} (removal primitive)", rel.display(), i + 1));
+            }
+        }
+    })?;
+    visit(&root.join("apps"), &mut |path| {
+        let rel = path.strip_prefix(root).unwrap_or(path);
+        if rel.extension().is_none_or(|e| e != "rs") {
+            return;
+        }
+        let Ok(text) = std::fs::read_to_string(path) else {
+            return;
+        };
+        for (i, line) in text.lines().enumerate() {
+            if line.contains("move_to_trash(")
+                || line.contains("removeItemAtURL")
+                || line.contains("disallowed_methods")
+            {
+                offenders.push(format!(
+                    "{}:{} (apps must go through the executor)",
+                    rel.display(),
+                    i + 1
+                ));
+            }
+        }
+    })?;
     if offenders.is_empty() {
         println!("check-safety: ok");
         Ok(())
     } else {
         bail!(
-            "`disallowed_methods` used outside {ALLOWED:?}:\n  {}",
+            "safety violations (deletion/process APIs outside {ALLOWED:?} or the executor):\n  {}",
             offenders.join("\n  ")
         )
     }

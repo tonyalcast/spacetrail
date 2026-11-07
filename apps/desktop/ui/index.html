@@ -9,10 +9,12 @@
 <body>
   <header class="titlebar" data-tauri-drag-region>
     <div class="brand" data-tauri-drag-region>spacetrail</div>
-    <div class="titlebar-actions">
+    <div class="titlebar-mid" data-tauri-drag-region>
       <span id="activity" class="activity" hidden><span class="spinner"></span><span id="activity-text"></span></span>
-      <button id="rescan" class="btn ghost" type="button">Rescan</button>
-      <button id="open-settings" class="btn ghost" type="button" aria-label="Settings" title="Settings">⚙︎ Settings</button>
+    </div>
+    <div class="titlebar-actions">
+      <button id="rescan" class="icon-btn" type="button" data-tip="Scan again" aria-label="Scan again"></button>
+      <button id="open-settings" class="icon-btn" type="button" data-tip="Settings (AI explanations)" aria-label="Settings"></button>
     </div>
   </header>
 
@@ -21,7 +23,7 @@
       <div class="banner-icon" aria-hidden="true">🔐</div>
       <div class="banner-body">
         <strong id="fda-title">Let spacetrail see the whole disk</strong>
-        <p id="fda-text">Without Full Disk Access, macOS hides some folders from spacetrail (Mail, Messages, Safari, the Trash and other apps' data), so their size is unknown. spacetrail is already listed in System Settings: just switch it on. The permission is only for spacetrail, not your terminal.</p>
+        <p id="fda-text">macOS hides some folders (Mail, Messages, Safari, the Trash, other apps' data) until you grant Full Disk Access. spacetrail is already listed in System Settings: just switch it on. The permission is only for spacetrail.</p>
       </div>
       <div class="banner-actions">
         <button id="fda-open" class="btn primary" type="button">Open System Settings</button>
@@ -29,101 +31,99 @@
       </div>
     </section>
 
-    <section class="hero card">
+    <section class="summary card">
       <div class="gauge">
         <svg id="gauge" viewBox="0 0 120 120" role="img" aria-label="Disk usage"></svg>
         <div class="gauge-label">
           <div id="free-big" class="free-big">–</div>
-          <div class="muted small">free of <span id="total">–</span></div>
+          <div class="muted tiny-text">free of <span id="total">–</span></div>
         </div>
       </div>
-      <div class="hero-text">
+      <div class="summary-text">
         <span id="status-pill" class="pill">Reading disk…</span>
         <h1 id="headline">Looking at your disk…</h1>
         <p id="subline" class="muted"></p>
+      </div>
+      <div class="summary-vols">
         <div id="volumes" class="volbar" aria-label="Space by APFS volume"></div>
         <div id="volumes-legend" class="legend"></div>
       </div>
     </section>
 
-    <section class="card">
+    <nav class="viewtabs" role="tablist" aria-label="Sections">
+      <button class="vtab" role="tab" data-view="map" aria-selected="true">Map</button>
+      <button class="vtab" role="tab" data-view="free" aria-selected="false">Free up space <span class="count" id="count-free"></span></button>
+      <button class="vtab" role="tab" data-view="files" aria-selected="false">Files</button>
+      <button class="vtab" role="tab" data-view="tips" aria-selected="false">Tips <span class="count" id="count-tips"></span></button>
+    </nav>
+
+    <section class="card view" id="view-map" role="tabpanel">
       <div class="section-head">
-        <div>
-          <h2>Where is the space going?</h2>
-          <p class="muted small">Bigger block = more space. Striped area = what you could free. Click a block to look inside.</p>
-        </div>
         <nav id="crumbs" class="crumbs" aria-label="Folder path"></nav>
+        <div class="muted small legend-inline"><span class="swatch hatch"></span> could be freed · click a block to look inside</div>
       </div>
       <div id="treemap" class="treemap">
-        <div class="loading" id="tm-loading"><span class="spinner"></span><span id="tm-progress">Scanning your disk…</span></div>
+        <div class="loading"><span class="spinner"></span><span id="tm-progress">Scanning your disk…</span></div>
       </div>
       <div id="tm-foot" class="tm-foot muted small"></div>
-      <div id="files-box" class="files-box" hidden>
-        <div class="files-head">
-          <div class="tabs" role="tablist">
-            <button class="tab" id="tab-largest" role="tab" type="button" aria-selected="true">Largest files</button>
-            <button class="tab" id="tab-oldest" role="tab" type="button" aria-selected="false">Oldest files</button>
-          </div>
-          <label class="switch"><input type="checkbox" id="hide-system" checked> Hide system files</label>
-        </div>
-        <p id="files-hint" class="muted small"></p>
-        <ul id="files" class="rows"></ul>
-      </div>
     </section>
 
-    <section class="card">
+    <section class="card view" id="view-free" role="tabpanel" hidden>
       <div class="section-head">
-        <div>
-          <h2>What can I free?</h2>
-          <p class="muted small">Tick what you want to clear to see how much space you'd get back.</p>
-        </div>
-        <div id="risk-tabs" class="tabs" role="tablist"></div>
+        <div id="risk-tabs" class="chips" role="tablist"></div>
+        <div id="riskbar" class="riskbar" hidden></div>
       </div>
-      <div id="riskbar" class="riskbar" hidden></div>
       <div id="suggestions">
-        <div class="loading" id="sg-loading"><span class="spinner"></span><span id="sg-progress">Looking for things to free…</span></div>
+        <div class="loading"><span class="spinner"></span><span id="sg-progress">Looking for things to free…</span></div>
       </div>
     </section>
 
-    <section class="card" id="advice-card" hidden>
-      <h2>Also worth knowing</h2>
+    <section class="card view" id="view-files" role="tabpanel" hidden>
+      <div class="section-head">
+        <div class="seg" role="tablist">
+          <button id="tab-largest" type="button" role="tab" aria-checked="true">Largest</button>
+          <button id="tab-oldest" type="button" role="tab" aria-checked="false">Oldest</button>
+        </div>
+        <label class="switch" data-tip="Hides macOS, shared /Library and app-internal files you don't manage yourself"><input type="checkbox" id="hide-system" checked> Hide system files</label>
+      </div>
+      <p id="files-hint" class="muted small"></p>
+      <ul id="files" class="rows"></ul>
+    </section>
+
+    <section class="card view" id="view-tips" role="tabpanel" hidden>
       <ul id="advice" class="advice"></ul>
     </section>
   </main>
 
   <footer id="simbar" class="simbar" hidden>
-    <div>
-      <strong id="sim-selected">0 B</strong> selected
-      <span class="muted">→ you'd have</span>
-      <strong id="sim-free">–</strong> <span class="muted">free</span>
-    </div>
-    <div class="muted small">spacetrail never deletes anything yet: use the commands or Finder buttons.</div>
+    <span><strong id="sim-selected">0 B</strong> selected</span>
+    <span class="arrow">→</span>
+    <span>you'd have <strong id="sim-free">–</strong> free</span>
   </footer>
 
+  <div id="toast" class="toast" role="status" hidden></div>
   <div id="tooltip" class="tooltip" role="tooltip" hidden></div>
 
   <dialog id="settings" class="modal">
     <form method="dialog" class="modal-inner">
       <div class="modal-head">
         <h2>Settings</h2>
-        <button class="btn ghost tiny" value="close" aria-label="Close">✕</button>
+        <button class="icon-btn close-x" value="close" aria-label="Close" data-tip="Close"></button>
       </div>
       <h3>AI explanations</h3>
-      <p class="muted small">The ✨ Explain button asks an AI model what a file or folder is and whether deleting it is safe. It is only used when you press it. spacetrail sends the path (with your user folder shown as ~), size, dates, where it was downloaded from and the names of a few items inside a folder. It never sends what is inside your files. Keys are stored in your macOS Keychain.</p>
-
+      <p class="muted small">The ✨ button asks an AI model what a file or folder is and whether deleting it is safe, only when you press it. spacetrail sends the path (your user folder shown as ~), size, dates, where it was downloaded from and the names of a few items inside a folder, never what is inside your files. Keys are stored in your macOS Keychain.</p>
       <div class="field">
-        <span class="label">Use</span>
+        <span class="label">Provider</span>
         <div class="seg" id="provider-seg" role="radiogroup"></div>
       </div>
       <div id="provider-panels"></div>
-
       <div class="field">
         <label class="label" for="language">Answer language</label>
         <select id="language">
           <option>Spanish</option><option>English</option><option>Portuguese</option><option>French</option><option>German</option><option>Italian</option>
         </select>
       </div>
-      <label class="switch"><input type="checkbox" id="share-listing"> Include the names of the first items inside a folder (helps the model a lot)</label>
+      <label class="switch"><input type="checkbox" id="share-listing"> Send the names of the first items inside a folder (much better answers)</label>
       <div class="modal-foot">
         <span id="settings-status" class="muted small"></span>
         <button class="btn primary" value="close">Done</button>
@@ -134,16 +134,40 @@
   <dialog id="explain" class="modal">
     <div class="modal-inner">
       <div class="modal-head">
-        <div>
-          <div class="muted small">Explain</div>
+        <div class="min0">
+          <div class="muted small">✨ AI explanation</div>
           <h2 id="ex-title" class="ex-title"></h2>
           <div id="ex-path" class="muted small mono ex-path"></div>
         </div>
-        <button class="btn ghost tiny" type="button" id="ex-close" aria-label="Close">✕</button>
+        <button class="icon-btn close-x" type="button" id="ex-close" aria-label="Close" data-tip="Close"></button>
       </div>
       <div id="ex-body"></div>
     </div>
   </dialog>
+
+  <dialog id="confirm" class="modal">
+    <div class="modal-inner">
+      <div class="modal-head">
+        <div class="min0">
+          <h2>Move to Trash?</h2>
+          <div id="cf-path" class="muted small mono ex-path"></div>
+        </div>
+        <button class="icon-btn close-x" type="button" id="cf-close" aria-label="Cancel" data-tip="Cancel"></button>
+      </div>
+      <div class="cf-facts" id="cf-facts"></div>
+      <p class="muted small">spacetrail moves it to the Trash, so you can put it back (there is an Undo button too). The space is freed when you empty the Trash. Check first if you are not sure what it is.</p>
+      <div id="cf-ai"></div>
+      <div id="cf-error" class="err-text" hidden></div>
+      <div class="modal-foot">
+        <button id="cf-ask" class="btn" type="button">✨ Ask AI first</button>
+        <div class="row-end">
+          <button id="cf-cancel" class="btn ghost" type="button">Cancel</button>
+          <button id="cf-go" class="btn danger" type="button">Move to Trash</button>
+        </div>
+      </div>
+    </div>
+  </dialog>
+
   <script src="app.js"></script>
 </body>
 </html>
