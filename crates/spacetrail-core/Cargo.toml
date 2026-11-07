@@ -1,0 +1,16 @@
+[package]
+name = "spacetrail-core"
+description = "Platform-agnostic domain model, scanner, diffing and forecasting for spacetrail"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+
+[lints]
+workspace = true

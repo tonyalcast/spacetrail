@@ -1,0 +1,19 @@
+[package]
+name = "spacetrail-cleaners"
+description = "Declarative cleaners, planner and the single safe executor for spacetrail"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+spacetrail-core.workspace = true
+spacetrail-store.workspace = true
+spacetrail-macos.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

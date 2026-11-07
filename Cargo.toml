@@ -1,0 +1,45 @@
+[workspace]
+resolver = "3"
+members = ["crates/*", "xtask"]
+default-members = ["crates/*"]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/OWNER/spacetrail"
+authors = ["The spacetrail authors"]
+publish = false
+
+[workspace.dependencies]
+# internal
+spacetrail-core = { path = "crates/spacetrail-core", version = "0.0.0" }
+spacetrail-macos = { path = "crates/spacetrail-macos", version = "0.0.0" }
+spacetrail-store = { path = "crates/spacetrail-store", version = "0.0.0" }
+spacetrail-cleaners = { path = "crates/spacetrail-cleaners", version = "0.0.0" }
+spacetrail-daemon = { path = "crates/spacetrail-daemon", version = "0.0.0" }
+spacetrail-proto = { path = "crates/spacetrail-proto", version = "0.0.0" }
+# external
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+thiserror = "2"
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+missing_debug_implementations = "warn"
+unreachable_pub = "warn"
+rust_2018_idioms = { level = "warn", priority = -1 }
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+dbg_macro = "warn"
+todo = "warn"
+unimplemented = "warn"
+undocumented_unsafe_blocks = "warn"
+allow_attributes_without_reason = "warn"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"

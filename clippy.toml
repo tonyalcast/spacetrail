@@ -1,0 +1,9 @@
+# Safety rail (CLAUDE.md rule 2): all deletion and process spawning goes through the
+# single executor in spacetrail-cleaners. The only allowed
+# `#[expect(clippy::disallowed_methods, reason = "...")]` lives there; CI greps for it.
+disallowed-methods = [
+  { path = "std::fs::remove_dir_all", reason = "delete only via spacetrail_cleaners::executor" },
+  { path = "std::fs::remove_dir", reason = "delete only via spacetrail_cleaners::executor" },
+  { path = "std::fs::remove_file", reason = "delete only via spacetrail_cleaners::executor" },
+  { path = "std::process::Command::new", reason = "spawn processes only via spacetrail_cleaners::executor" },
+]

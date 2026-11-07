@@ -1,0 +1,27 @@
+[package]
+name = "spacetrail-cli"
+description = "spacetrail: monitor, explain and clean disk space on macOS"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "spacetrail"
+path = "src/main.rs"
+
+[dependencies]
+spacetrail-core.workspace = true
+spacetrail-macos.workspace = true
+spacetrail-store.workspace = true
+spacetrail-cleaners.workspace = true
+spacetrail-daemon.workspace = true
+spacetrail-proto.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+
+[lints]
+workspace = true
