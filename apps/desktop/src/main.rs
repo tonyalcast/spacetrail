@@ -336,6 +336,8 @@ fn undo_trash(id: String) -> Result<spacetrail_cleaners::executor::TrashRecord, 
 fn main() {
     // Never download cloud files, whatever happens below.
     let _ = spacetrail_macos::prevent_materialization();
+    // Keys from older versions: move them out of the Keychain once, in the background.
+    std::thread::spawn(settings::migrate_from_keychain);
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![

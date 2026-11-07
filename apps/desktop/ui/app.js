@@ -522,6 +522,7 @@ async function saveSettings(patch) {
 }
 function renderSettings() {
   const st = settingsView.settings;
+  if (settingsView.keys_file) $("keys-file").textContent = settingsView.keys_file;
   $("provider-seg").replaceChildren(...PROVIDERS.map((p) => el("button", { type: "button", role: "radio", "aria-checked": String(st.active === p.id), text: p.label,
     onclick: async () => { await saveSettings({ active: p.id }); renderSettings(); } })));
   const panels = $("provider-panels");
@@ -529,14 +530,14 @@ function renderSettings() {
   const p = PROVIDERS.find((x) => x.id === st.active);
   if (!p) { panels.append(el("p", { class: "muted small", text: "Pick a provider above to set it up." })); }
   else {
-    const keyInput = el("input", { type: "password", placeholder: hasKey(p.id) ? "•••••••• saved in Keychain (type to replace)" : p.keyHint, autocomplete: "off", spellcheck: "false" });
-    const keyMsg = el("span", { class: hasKey(p.id) ? "ok-text" : "muted small", text: hasKey(p.id) ? "Key saved in Keychain ✓" : p.needsKey ? "No key saved yet" : "" });
+    const keyInput = el("input", { type: "password", placeholder: hasKey(p.id) ? "•••••••• saved (type to replace)" : p.keyHint, autocomplete: "off", spellcheck: "false" });
+    const keyMsg = el("span", { class: hasKey(p.id) ? "ok-text" : "muted small", text: hasKey(p.id) ? "Key saved ✓" : p.needsKey ? "No key saved yet" : "" });
     const saveKey = el("button", { class: "btn", type: "button", text: "Save key" });
     saveKey.addEventListener("click", async () => {
       try { settingsView = await invoke("set_api_key", { provider: p.id, key: keyInput.value }); keyInput.value = ""; renderSettings(); }
       catch (e) { keyMsg.className = "err-text"; keyMsg.textContent = String(e); }
     });
-    const removeKey = iconBtn("trash", "Remove key from Keychain", async () => { settingsView = await invoke("set_api_key", { provider: p.id, key: "" }); renderSettings(); }, "del");
+    const removeKey = iconBtn("trash", "Remove saved key", async () => { settingsView = await invoke("set_api_key", { provider: p.id, key: "" }); renderSettings(); }, "del");
     removeKey.hidden = !hasKey(p.id);
     const modelKey = `${p.id}_model`;
     const modelSel = el("select", { id: "model-select" }, el("option", { value: st[modelKey] || "", text: st[modelKey] || "— load the model list —" }));
@@ -699,7 +700,7 @@ function mockInvoke(cmd, args) {
     case "get_suggestions": return delay(report, 300);
     case "check_full_disk_access": return delay({ status: "granted" }, 50);
     case "get_settings": case "save_settings": case "set_api_key":
-      return delay({ settings: { active: "anthropic", anthropic_model: "claude-opus-5-5", openai_model: "", compatible_base_url: "http://localhost:11434/v1", compatible_model: "", language: "Spanish", share_folder_listing: true }, has_key: [["anthropic", true], ["openai", false], ["compatible", false]] }, 50);
+      return delay({ settings: { active: "anthropic", anthropic_model: "claude-opus-5-5", openai_model: "", compatible_base_url: "http://localhost:11434/v1", compatible_model: "", language: "Spanish", share_folder_listing: true }, has_key: [["anthropic", true], ["openai", false], ["compatible", false]], keys_file: "~/.config/spacetrail/api-keys.json" }, 50);
     case "list_models": return delay([{ id: "claude-opus-5-5", name: "Claude Opus 5.5" }, { id: "claude-sonnet-5-5", name: "Claude Sonnet 5.5" }], 200);
     case "explain": return delay({ provider: "Anthropic", model: "claude-opus-5-5", answer: { what: "A disk image of an old app installer.", origin: "Downloaded with Safari; the app it installs is already in /Applications.", verdict: "safe", impact: "Nothing breaks; you can download it again if needed.", how_to_remove: "Move it to the Trash.", confidence: "high" }, sent: { path: tilde(args.path), kind: "file" } }, 600);
     case "trash_item": return delay({ id: "1-1", original: args.path, trashed_to: "/Users/demo/.Trash/x" }, 300);
