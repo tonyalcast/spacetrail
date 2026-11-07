@@ -7,3 +7,7 @@
 
 # Real-machine scan reports contain personal/client paths: keep local
 /docs/reports/
+
+# Local preview config and Tauri generated schemas
+/.claude/launch.json
+/apps/desktop/gen/

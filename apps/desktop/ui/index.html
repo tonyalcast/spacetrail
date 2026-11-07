@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>spacetrail</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="titlebar" data-tauri-drag-region>
+    <div class="brand" data-tauri-drag-region>spacetrail</div>
+    <div class="titlebar-actions">
+      <span id="activity" class="activity" hidden><span class="spinner"></span><span id="activity-text"></span></span>
+      <button id="rescan" class="btn ghost" type="button">Rescan</button>
+    </div>
+  </header>
+
+  <main>
+    <section id="fda-banner" class="banner" hidden>
+      <div class="banner-icon" aria-hidden="true">🔐</div>
+      <div class="banner-body">
+        <strong id="fda-title">Let spacetrail see the whole disk</strong>
+        <p id="fda-text">Without Full Disk Access, macOS hides some folders from spacetrail (Mail, Messages, Safari, the Trash and other apps' data), so their size is unknown. spacetrail is already listed in System Settings: just switch it on. The permission is only for spacetrail, not your terminal.</p>
+      </div>
+      <div class="banner-actions">
+        <button id="fda-open" class="btn primary" type="button">Open System Settings</button>
+        <button id="fda-restart" class="btn ghost" type="button" hidden>Restart spacetrail</button>
+      </div>
+    </section>
+
+    <section class="hero card">
+      <div class="gauge">
+        <svg id="gauge" viewBox="0 0 120 120" role="img" aria-label="Disk usage"></svg>
+        <div class="gauge-label">
+          <div id="free-big" class="free-big">–</div>
+          <div class="muted small">free of <span id="total">–</span></div>
+        </div>
+      </div>
+      <div class="hero-text">
+        <span id="status-pill" class="pill">Reading disk…</span>
+        <h1 id="headline">Looking at your disk…</h1>
+        <p id="subline" class="muted"></p>
+        <div id="volumes" class="volbar" aria-label="Space by APFS volume"></div>
+        <div id="volumes-legend" class="legend"></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="section-head">
+        <div>
+          <h2>Where is the space going?</h2>
+          <p class="muted small">Bigger block = more space. Striped area = what you could free. Click a block to look inside.</p>
+        </div>
+        <nav id="crumbs" class="crumbs" aria-label="Folder path"></nav>
+      </div>
+      <div id="treemap" class="treemap">
+        <div class="loading" id="tm-loading"><span class="spinner"></span><span id="tm-progress">Scanning your disk…</span></div>
+      </div>
+      <div id="tm-foot" class="tm-foot muted small"></div>
+      <details id="files-box" class="files-box" hidden>
+        <summary>Largest files</summary>
+        <ul id="files" class="rows"></ul>
+      </details>
+    </section>
+
+    <section class="card">
+      <div class="section-head">
+        <div>
+          <h2>What can I free?</h2>
+          <p class="muted small">Tick what you want to clear to see how much space you'd get back.</p>
+        </div>
+        <div id="risk-tabs" class="tabs" role="tablist"></div>
+      </div>
+      <div id="riskbar" class="riskbar" hidden></div>
+      <div id="suggestions">
+        <div class="loading" id="sg-loading"><span class="spinner"></span><span id="sg-progress">Looking for things to free…</span></div>
+      </div>
+    </section>
+
+    <section class="card" id="advice-card" hidden>
+      <h2>Also worth knowing</h2>
+      <ul id="advice" class="advice"></ul>
+    </section>
+  </main>
+
+  <footer id="simbar" class="simbar" hidden>
+    <div>
+      <strong id="sim-selected">0 B</strong> selected
+      <span class="muted">→ you'd have</span>
+      <strong id="sim-free">–</strong> <span class="muted">free</span>
+    </div>
+    <div class="muted small">spacetrail never deletes anything yet: use the commands or Finder buttons.</div>
+  </footer>
+
+  <div id="tooltip" class="tooltip" role="tooltip" hidden></div>
+  <script src="app.js"></script>
+</body>
+</html>

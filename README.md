@@ -13,6 +13,14 @@ spacetrail doctor     # Full Disk Access and environment checks
 
 Every command supports `--json`. Nothing is ever deleted by these commands.
 
+### Desktop app
+
+```
+cd apps/desktop && cargo tauri build   # → target/release/bundle/macos/spacetrail.app
+```
+
+It needs a code-signing identity named `spacetrail-dev` in your login keychain (Keychain Access → Certificate Assistant → Create a Certificate…, type "Code Signing"). With a stable signature, macOS keeps the app's Full Disk Access across rebuilds.
+
 - Architecture: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 - Cleaner format: [`docs/CLEANER_SPEC.md`](docs/CLEANER_SPEC.md)
 
