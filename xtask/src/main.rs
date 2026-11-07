@@ -5,12 +5,24 @@ use anyhow::bail;
 const USAGE: &str = "usage: cargo xtask <task>
 
 tasks:
-  check-safety   fail if `disallowed_methods` is allowed outside the executor";
+  check-safety              fail if `disallowed_methods` is allowed outside the executor
+  gen-tree <DIR> [FILES]    create a synthetic tree of empty files (default 100000)";
 
 fn main() -> anyhow::Result<()> {
     let task = std::env::args().nth(1);
     match task.as_deref() {
         Some("check-safety") => check_safety(),
+        Some("gen-tree") => {
+            let Some(dir) = std::env::args().nth(2) else {
+                bail!("usage: cargo xtask gen-tree <DIR> [FILES]");
+            };
+            let files = std::env::args()
+                .nth(3)
+                .map(|n| n.parse())
+                .transpose()?
+                .unwrap_or(100_000);
+            gen_tree(std::path::Path::new(&dir), files)
+        }
         _ => {
             eprintln!("{USAGE}");
             bail!("unknown or missing task");
@@ -62,5 +74,35 @@ fn visit(dir: &std::path::Path, f: &mut dyn FnMut(&std::path::Path)) -> anyhow::
             f(&path);
         }
     }
+    Ok(())
+}
+
+/// Creates `files` empty files in a balanced tree (100 files and 10 subdirs
+/// per directory). Refuses to write into an existing non-empty directory.
+fn gen_tree(root: &std::path::Path, files: usize) -> anyhow::Result<()> {
+    if root.exists() && std::fs::read_dir(root)?.next().is_some() {
+        bail!("{} exists and is not empty", root.display());
+    }
+    let mut remaining = files;
+    let mut dirs = 0usize;
+    let mut queue = std::collections::VecDeque::from([root.to_path_buf()]);
+    while remaining > 0 {
+        let dir = queue
+            .pop_front()
+            .expect("queue never empties while filling");
+        std::fs::create_dir_all(&dir)?;
+        dirs += 1;
+        for i in 0..100.min(remaining) {
+            std::fs::write(dir.join(format!("f{i}")), b"")?;
+        }
+        remaining = remaining.saturating_sub(100);
+        for d in 0..10 {
+            queue.push_back(dir.join(format!("d{d}")));
+        }
+    }
+    println!(
+        "created {files} files in {dirs} directories under {}",
+        root.display()
+    );
     Ok(())
 }

@@ -50,3 +50,9 @@ Findings from experiments on real macOS behavior. Every entry: date, machine, wh
 - [ ] S6 (Phase 3): TCC identity of the daemon binary when unsigned vs signed; does FDA survive a `brew upgrade` (Cellar path changes)?
 - [ ] S7 (Phase 4): `proc_pid_rusage(RUSAGE_INFO_V4)` for own-uid processes, including `com.apple.Virtualization.VirtualMachine` (Docker's VM).
 - [ ] S8 (Phase 2): `NSFileManager trashItemAtURL:resultingItemURL:` — returned URL is stable for undo; behavior on external volumes / name collisions.
+
+## 2026-10-01 — M1.1 walker throughput (author's machine, M-series)
+
+`cargo bench -p spacetrail-core --bench scan` with `SPACETRAIL_BENCH_FILES=200000` (empty files, 100 per dir, 10 subdirs per dir, warm cache): **170 ms per scan ≈ 1.17 M files/s**. Extrapolated, 1 M files take ≈ 0.9 s. The brief's target (≥ 1 M files in < 60 s) is met with a wide margin on synthetic trees. Real trees (deeper, larger dirs, cold cache) are measured in M1.3. `getattrlistbulk` (S4) is therefore an optimization, not a requirement.
+
+Design note (dataless directories): a cloud-only *directory* is not listed at all. On File Provider domains, `readdir` on a dataless directory can itself trigger materialization of the listing. Spike S1 must also evaluate `setiopolicy_np(IOPOL_TYPE_VFS_MATERIALIZE_DATALESS_FILES, IOPOL_SCOPE_PROCESS, IOPOL_MATERIALIZE_DATALESS_FILES_OFF)` as a process-wide belt-and-braces guarantee: with it, any accidental access fails with an error instead of downloading.

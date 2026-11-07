@@ -24,6 +24,11 @@ spacetrail-proto = { path = "crates/spacetrail-proto", version = "0.0.0" }
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 thiserror = "2"
+rayon = "1.12"
+# dev
+criterion = "0.7"
+proptest = "1"
+tempfile = "3"
 
 [workspace.lints.rust]
 unsafe_op_in_unsafe_fn = "deny"
