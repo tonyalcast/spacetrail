@@ -411,7 +411,126 @@ function updateSim() {
   $("sim-selected").textContent = bytes(sel);
   $("sim-free").textContent = `${bytes(free + sel)} (${pct(free + sel, total)}%)`;
   $("simbar").hidden = sel === 0 || state.view !== "free";
+  const runnable = r.suggestions.filter((s) => state.selected.has(s.id) && stepPlan(s).run).length;
+  $("clean-btn").disabled = runnable === 0;
+  $("clean-btn").textContent = runnable ? `Clean selected (${runnable})…` : "Nothing runnable selected";
 }
+
+// ───────────────────────── clean selected ─────────────────────────
+/// How spacetrail would carry out a suggestion (decided by the backend), or why not.
+function stepPlan(s) {
+  if (s.risk === "manual") return { run: false, icon: "🔒", how: "Not run: “your call” items are never cleaned automatically" };
+  if (s.blocked_by?.length) return { run: true, icon: "⏸", how: `Close ${s.blocked_by.join(", ")} first (checked again when cleaning)` };
+  const n = s.items.length;
+  switch (s.exec?.kind) {
+    case "remove_items": return { run: true, icon: "🗑", how: `${$("cl-permanent").checked ? "Delete permanently" : "Move to the Trash"}: ${n} item${n === 1 ? "" : "s"}` };
+    case "command": return { run: true, icon: "▶", how: "Run ", code: s.exec.argv.map((a, i) => (i === 0 ? a.split("/").pop() : a)).join(" ") };
+    case "remove_worktrees": return { run: true, icon: "⎇", how: `Remove ${n} git worktree${n === 1 ? "" : "s"} (git refuses if there are uncommitted changes; branches are kept)` };
+    default: return { run: false, icon: "✋", how: "Not run: spacetrail has no automatic way; see the instructions" };
+  }
+}
+
+let cleanupResults = null;
+function chosenSuggestions() {
+  return state.report ? state.report.suggestions.filter((s) => state.selected.has(s.id)) : [];
+}
+function openCleanup() {
+  cleanupResults = null;
+  renderCleanupPlan();
+  $("cleanup").showModal();
+}
+function renderCleanupPlan() {
+  const chosen = chosenSuggestions();
+  const runnable = chosen.filter((s) => stepPlan(s).run);
+  const bytesRun = runnable.reduce((a, s) => a + s.bytes, 0);
+  $("cl-title").textContent = "Clean selected";
+  $("cl-sub").textContent = `${runnable.length} of ${chosen.length} selected will run · about ${bytes(bytesRun)}`;
+  $("cl-steps").replaceChildren(...chosen.map((s) => {
+    const p = stepPlan(s);
+    return el("li", { class: p.run ? "" : "skip", "data-id": s.id },
+      el("span", { class: "st-icon", text: p.icon }),
+      el("div", {}, el("div", { class: "st-name", text: s.name }), el("div", { class: "st-how" }, p.how, p.code ? el("code", { text: p.code }) : null)),
+      el("span", { class: "st-size", text: `${s.exact ? "" : "≤ "}${bytes(s.bytes)}` }));
+  }));
+  const anyRemove = runnable.some((s) => s.exec?.kind === "remove_items");
+  $("cl-permanent-row").hidden = !anyRemove;
+  $("cl-note").textContent = $("cl-permanent").checked
+    ? "Items are deleted for good. Tool commands (Yarn, Docker…) free space right away too."
+    : "Items go to the Trash: the space is freed when you empty it, and you can undo. Tool commands (Yarn, Docker…) free space right away.";
+  $("cl-summary").textContent = "";
+  $("cl-go").hidden = false;
+  $("cl-go").disabled = runnable.length === 0;
+  $("cl-go").textContent = `Clean ${bytes(bytesRun)}`;
+  $("cl-cancel").textContent = "Cancel";
+  $("cl-undo").hidden = true;
+}
+async function runCleanup() {
+  const ids = chosenSuggestions().filter((s) => stepPlan(s).run).map((s) => s.id);
+  if (!ids.length) return;
+  $("cl-go").disabled = true;
+  $("cl-cancel").disabled = true;
+  $("cl-permanent").disabled = true;
+  for (const id of ids) {
+    const li = document.querySelector(`#cl-steps li[data-id="${CSS.escape(id)}"] .st-icon`);
+    if (li) li.replaceChildren(el("span", { class: "spinner" }));
+  }
+  try {
+    cleanupResults = await invoke("run_cleanup", { ids, permanent: $("cl-permanent").checked });
+  } catch (e) {
+    $("cl-summary").textContent = String(e);
+    $("cl-go").disabled = false; $("cl-cancel").disabled = false; $("cl-permanent").disabled = false;
+    return;
+  }
+  let freed = 0, trashed = 0, failed = 0;
+  for (const r of cleanupResults) {
+    const li = document.querySelector(`#cl-steps li[data-id="${CSS.escape(r.id)}"]`);
+    if (r.method === "trash") trashed += r.bytes; else freed += r.bytes;
+    failed += r.failed;
+    if (!li) continue;
+    li.querySelector(".st-icon").textContent = r.ok ? "✅" : r.done ? "⚠️" : "❌";
+    const how = li.querySelector(".st-how");
+    how.textContent = r.done ? `${r.done} done${r.failed ? `, ${r.failed} failed` : ""}` : r.method === "skipped" ? "Skipped" : "Failed";
+    if (r.messages.length) li.children[1].append(el("div", { class: `st-msg ${r.ok ? "" : "err"}`, text: r.messages.join("\n") }));
+  }
+  const parts = [];
+  if (freed) parts.push(`Freed about ${bytes(freed)}`);
+  if (trashed) parts.push(`moved ${bytes(trashed)} to the Trash (empty it to free the space)`);
+  if (failed) parts.push(`${failed} failed`);
+  $("cl-summary").textContent = parts.length ? `${parts.join(" · ")}.` : "Nothing was cleaned.";
+  $("cl-go").hidden = true;
+  $("cl-cancel").disabled = false;
+  $("cl-cancel").textContent = "Close & rescan";
+  $("cl-permanent").disabled = false;
+  const undoIds = cleanupResults.flatMap((r) => r.undo_ids);
+  $("cl-undo").hidden = undoIds.length === 0;
+  // Done suggestions leave the list right away; a rescan refreshes the rest.
+  const doneIds = new Set(cleanupResults.filter((r) => r.ok).map((r) => r.id));
+  state.report.suggestions = state.report.suggestions.filter((s) => !doneIds.has(s.id));
+  for (const id of doneIds) state.selected.delete(id);
+  recomputeTotals();
+  renderSuggestions();
+  invoke("get_disk_status").then((st) => { state.status = st; renderSummary(); updateSim(); });
+}
+function recomputeTotals() {
+  const t = { safe: 0, review: 0, manual: 0 };
+  for (const s of state.report.suggestions) t[s.risk] += s.bytes;
+  state.report.totals = t;
+}
+async function undoCleanup() {
+  const ids = (cleanupResults || []).flatMap((r) => r.undo_ids);
+  let ok = 0, bad = 0;
+  for (const id of ids) { try { await invoke("undo_trash", { id }); ok++; } catch { bad++; } }
+  $("cl-undo").hidden = true;
+  $("cl-summary").textContent = `Put back ${ok} item${ok === 1 ? "" : "s"}${bad ? `, ${bad} could not be restored` : ""}.`;
+}
+$("clean-btn").addEventListener("click", openCleanup);
+$("cl-go").addEventListener("click", runCleanup);
+$("cl-undo").addEventListener("click", undoCleanup);
+$("cl-permanent").addEventListener("change", () => { if (!cleanupResults) renderCleanupPlan(); });
+const closeCleanup = () => { $("cleanup").close(); if (cleanupResults) loadAll(); };
+$("cl-cancel").addEventListener("click", closeCleanup);
+$("cl-close").addEventListener("click", closeCleanup);
+listen("cleanup-progress", (e) => { $("cl-sub").textContent = `Cleaning ${e.payload.index + 1} of ${e.payload.total}: ${e.payload.name}…`; });
 
 // ───────────────────────── toast ─────────────────────────
 let toastTimer = null;
@@ -679,15 +798,15 @@ function mockInvoke(cmd, args) {
     ])]),
     f("Applications", "/Applications", 30 * GB), f("Library", "/Library", 15 * GB), f("System", "/System", 14 * GB), f("opt", "/opt", 11 * GB),
   ]);
-  const sg = (id, name, risk, b, path, extra = {}) => ({ id, name, risk, bytes: b, exact: true, description: "Example description of what this is.", how: { summary: "Run the command below", commands: [["tool", "clean"]] }, items: [{ path, bytes: b }], notes: [], blocked_by: [], ...extra });
+  const sg = (id, name, risk, b, path, extra = {}) => ({ id, name, risk, bytes: b, exact: true, description: "Example description of what this is.", how: { summary: "Run the command below", commands: [["tool", "clean"]] }, items: [{ path, bytes: b }], notes: [], blocked_by: [], exec: { kind: risk === "manual" ? "none" : "remove_items" }, ...extra });
   const status = { volume: { total: 494 * GB, free: 6.5 * GB }, full_disk_access: { status: "granted" },
     container: { total: 494 * GB, free: 6.5 * GB, volumes: [{ role: "data", consumed: 446 * GB }, { role: "vm", consumed: 15 * GB }, { role: "system", consumed: 12.6 * GB }, { role: "preboot", consumed: 10.8 * GB }, { role: "recovery", consumed: 2.6 * GB }] } };
   const report = { disk: status, totals: { safe: 40.5 * GB, review: 88 * GB, manual: 168 * GB },
     suggestions: [
       sg("vscode-logs", "VS Code logs", "safe", 12.8 * GB, "/Users/demo/Library/Application Support/Code/logs", { regenerates: "New logs are written each session." }),
-      sg("yarn", "Yarn cache", "safe", 7.6 * GB, "/Users/demo/Library/Caches/Yarn", { exact: false }),
-      sg("wt", "Git worktrees", "review", 32.8 * GB, "/Users/demo/Documents/dev/repo/.claude/worktrees", { items: [{ path: "/Users/demo/Documents/dev/repo/.claude/worktrees/a", bytes: 3e9, note: "branch a · last change 9 days ago" }, { path: "/Users/demo/Documents/dev/repo/.claude/worktrees/b", bytes: 2e9 }] }),
-      sg("docker", "Docker build cache", "review", 18.4 * GB, "/Users/demo/Library/Containers/com.docker.docker/Data/vms/0/data/Docker.raw", { exact: false, blocked_by: ["Docker"] }),
+      sg("yarn", "Yarn cache", "safe", 7.6 * GB, "/Users/demo/Library/Caches/Yarn", { exact: false, exec: { kind: "command", argv: ["/opt/homebrew/bin/yarn", "cache", "clean"] } }),
+      sg("wt", "Git worktrees", "review", 32.8 * GB, "/Users/demo/Documents/dev/repo/.claude/worktrees", { exec: { kind: "remove_worktrees" }, items: [{ path: "/Users/demo/Documents/dev/repo/.claude/worktrees/a", bytes: 3e9, note: "branch a · last change 9 days ago" }, { path: "/Users/demo/Documents/dev/repo/.claude/worktrees/b", bytes: 2e9 }] }),
+      sg("docker", "Docker build cache", "review", 18.4 * GB, "/Users/demo/Library/Containers/com.docker.docker/Data/vms/0/data/Docker.raw", { exact: false, blocked_by: ["Docker"], exec: { kind: "command", argv: ["/usr/local/bin/docker", "builder", "prune", "--force"] } }),
       sg("game", "Large app data", "manual", 73 * GB, "/Users/demo/Library/Application Support/SomeGame"),
     ],
     advice: ["Swap uses 15 GB because memory is under pressure.", "Coding agents create a git worktree per task."], catalog_problems: [] };
@@ -705,6 +824,7 @@ function mockInvoke(cmd, args) {
     case "explain": return delay({ provider: "Anthropic", model: "claude-opus-5-5", answer: { what: "A disk image of an old app installer.", origin: "Downloaded with Safari; the app it installs is already in /Applications.", verdict: "safe", impact: "Nothing breaks; you can download it again if needed.", how_to_remove: "Move it to the Trash.", confidence: "high" }, sent: { path: tilde(args.path), kind: "file" } }, 600);
     case "trash_item": return delay({ id: "1-1", original: args.path, trashed_to: "/Users/demo/.Trash/x" }, 300);
     case "undo_trash": return delay({ id: args.id, restored: true }, 200);
+    case "run_cleanup": return delay(args.ids.map((id) => ({ id, name: id, method: id === "yarn" ? "command" : "trash", ok: id !== "wt", done: id === "wt" ? 1 : 1, failed: id === "wt" ? 1 : 0, bytes: 5e9, messages: id === "wt" ? ["/Users/demo/…/b: git refused: contains modified or untracked files"] : [], undo_ids: id === "vscode-logs" ? ["1"] : [] })), 900);
     default: return delay(null, 10);
   }
 }

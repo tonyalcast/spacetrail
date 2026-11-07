@@ -85,6 +85,7 @@ svg.i { width: 16px; height: 16px; display: block; }
   font: inherit; font-weight: 550; border-radius: 9px; padding: 7px 14px; cursor: pointer;
   border: 1px solid var(--line); background: var(--card); color: var(--text);
 }
+.btn { white-space: nowrap; }
 .btn:hover { background: var(--hover); }
 .btn.primary { background: var(--accent); color: var(--accent-text); border-color: transparent; }
 .btn.danger { background: var(--crit); color: #fff; border-color: transparent; }
@@ -233,7 +234,7 @@ main { max-width: 1120px; margin: 0 auto; padding: 4px 22px 90px; display: grid;
 .simbar {
   position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 30;
   background: var(--text); color: var(--card); border-radius: 12px; padding: 9px 18px;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, .25); display: flex; gap: 10px; align-items: center; font-size: 13.5px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, .25); display: flex; gap: 10px; align-items: center; font-size: 13.5px; white-space: nowrap;
 }
 .simbar strong { font-size: 15px; }
 .simbar .arrow { opacity: .6; }
@@ -278,3 +279,17 @@ main { max-width: 1120px; margin: 0 auto; padding: 4px 22px 90px; display: grid;
 .cf-facts { display: flex; gap: 18px; font-size: 13px; }
 .cf-facts b { font-size: 15px; }
 .close-x { margin: -4px -6px 0 0; }
+
+/* Cleanup plan */
+.modal.wide { width: min(760px, calc(100vw - 48px)); }
+.simbar .btn { margin-left: 6px; padding: 5px 12px; }
+.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; max-height: 46vh; overflow: auto; }
+.steps li { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 10px; align-items: start; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; }
+.steps li.skip { opacity: .6; }
+.steps .st-icon { font-size: 15px; line-height: 20px; text-align: center; }
+.steps .st-name { font-weight: 600; }
+.steps .st-how { color: var(--muted); font-size: 12.5px; }
+.steps .st-how code { font-size: 12px; }
+.steps .st-size { font-weight: 650; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.steps .st-msg { color: var(--muted); font-size: 12px; white-space: pre-wrap; max-height: 90px; overflow: auto; margin-top: 4px; }
+.steps .st-msg.err { color: var(--crit); }

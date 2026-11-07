@@ -99,6 +99,7 @@
     <span><strong id="sim-selected">0 B</strong> selected</span>
     <span class="arrow">→</span>
     <span>you'd have <strong id="sim-free">–</strong> free</span>
+    <button id="clean-btn" class="btn primary" type="button">Clean selected…</button>
   </footer>
 
   <div id="toast" class="toast" role="status" hidden></div>
@@ -163,6 +164,29 @@
         <div class="row-end">
           <button id="cf-cancel" class="btn ghost" type="button">Cancel</button>
           <button id="cf-go" class="btn danger" type="button">Move to Trash</button>
+        </div>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="cleanup" class="modal wide">
+    <div class="modal-inner">
+      <div class="modal-head">
+        <div>
+          <h2 id="cl-title">Clean selected</h2>
+          <p id="cl-sub" class="muted small"></p>
+        </div>
+        <button class="icon-btn close-x" type="button" id="cl-close" aria-label="Close" data-tip="Close"></button>
+      </div>
+      <ul id="cl-steps" class="steps"></ul>
+      <label class="switch" id="cl-permanent-row"><input type="checkbox" id="cl-permanent"> Delete permanently instead of moving to the Trash (frees the space right away; can't be undone)</label>
+      <p id="cl-note" class="muted small"></p>
+      <div class="modal-foot">
+        <span id="cl-summary" class="small"></span>
+        <div class="row-end">
+          <button id="cl-undo" class="btn ghost" type="button" hidden>Undo Trash moves</button>
+          <button id="cl-cancel" class="btn ghost" type="button">Cancel</button>
+          <button id="cl-go" class="btn primary" type="button">Clean</button>
         </div>
       </div>
     </div>

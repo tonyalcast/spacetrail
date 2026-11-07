@@ -55,6 +55,23 @@ pub struct How {
     pub instructions: Option<String>,
 }
 
+/// How spacetrail itself can carry out a suggestion (decided here, never by the UI).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum Exec {
+    /// spacetrail does not run it (manual risk, or nothing it can do).
+    None,
+    /// Move each item to the Trash (or delete it permanently if the user asks).
+    RemoveItems,
+    /// Run the tool's own cleanup; `argv[0]` is an absolute path.
+    Command {
+        /// Program and arguments.
+        argv: Vec<String>,
+    },
+    /// `git worktree remove` each item (git refuses when there are uncommitted changes).
+    RemoveWorktrees,
+}
+
 /// A recommendation.
 #[derive(Debug, Clone, Serialize)]
 pub struct Suggestion {
@@ -87,11 +104,16 @@ pub struct Suggestion {
     /// Apps that must be closed first.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub blocked_by: Vec<String>,
+    /// Every app that must be closed while cleaning (re-checked when running).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub apps_to_close: Vec<String>,
     /// Extra hints.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub notes: Vec<String>,
     /// Origin.
     pub source: Source,
+    /// How spacetrail can carry it out.
+    pub exec: Exec,
 }
 
 impl Suggestion {
@@ -131,6 +153,31 @@ impl Context {
         path_dirs.push(home.join(".cargo/bin"));
         path_dirs.push(home.join(".bun/bin"));
         path_dirs.push(home.join(".local/bin"));
+        // GUI apps get a minimal PATH: add the usual tool locations.
+        for extra in [
+            "/opt/miniconda3/bin",
+            "/opt/anaconda3/bin",
+            "/usr/local/go/bin",
+            "/usr/local/share/dotnet",
+            "/Applications/Docker.app/Contents/Resources/bin",
+        ] {
+            path_dirs.push(PathBuf::from(extra));
+        }
+        for rel in [
+            "miniconda3/bin",
+            "anaconda3/bin",
+            "go/bin",
+            ".dotnet",
+            "Library/pnpm",
+        ] {
+            path_dirs.push(home.join(rel));
+        }
+        // nvm: newest installed Node first.
+        if let Ok(rd) = std::fs::read_dir(home.join(".nvm/versions/node")) {
+            let mut v: Vec<PathBuf> = rd.flatten().map(|e| e.path().join("bin")).collect();
+            v.sort();
+            path_dirs.extend(v.into_iter().rev());
+        }
         Self {
             env: pattern::ALLOWED_VARS
                 .iter()
@@ -169,7 +216,19 @@ impl Context {
     /// `true` if an executable named `cmd` is on the search path.
     #[must_use]
     pub fn command_exists(&self, cmd: &str) -> bool {
-        self.path_dirs.iter().any(|d| d.join(cmd).is_file())
+        self.which(cmd).is_some()
+    }
+
+    /// Absolute path of the executable named `cmd`, if found.
+    #[must_use]
+    pub fn which(&self, cmd: &str) -> Option<PathBuf> {
+        if cmd.starts_with('/') {
+            return Path::new(cmd).is_file().then(|| PathBuf::from(cmd));
+        }
+        self.path_dirs
+            .iter()
+            .map(|d| d.join(cmd))
+            .find(|p| p.is_file())
     }
 
     /// Which of `names` are running.
@@ -398,8 +457,10 @@ pub fn evaluate(
         items,
         how: how_for(c, ctx),
         blocked_by: ctx.running(&c.preconditions.process_not_running),
+        apps_to_close: c.preconditions.process_not_running.clone(),
         notes: Vec::new(),
         source,
+        exec: exec_for(c, ctx),
     };
     if skipped_recent > 0 {
         s.notes.push(format!(
@@ -420,6 +481,27 @@ pub fn evaluate(
             .push(format!("close {} first", s.blocked_by.join(", ")));
     }
     (s.bytes >= min_bytes).then_some(s)
+}
+
+/// Tool command when the tool is installed, otherwise removing the items.
+fn exec_for(c: &Cleaner, ctx: &Context) -> Exec {
+    if c.risk == Risk::Manual {
+        return Exec::None;
+    }
+    for a in &c.actions {
+        if let Action::Command { argv, .. } = a
+            && let Some(prog) = argv.first().and_then(|p| ctx.which(p))
+        {
+            let mut full = vec![prog.display().to_string()];
+            full.extend(argv.iter().skip(1).cloned());
+            return Exec::Command { argv: full };
+        }
+    }
+    if c.remove_spec().is_some() {
+        Exec::RemoveItems
+    } else {
+        Exec::None
+    }
 }
 
 fn how_for(c: &Cleaner, ctx: &Context) -> How {
@@ -505,6 +587,7 @@ type = "delete_contents"
         write(&h.join("Library/Caches/B/y"), 300_000);
         let c = cleaner(r#""~/Library/Caches/*""#, "");
         let s = evaluate(&c, Source::Builtin, &ctx(h), &mut Claims::default(), 1).unwrap();
+        assert_eq!(s.exec, Exec::RemoveItems);
         assert_eq!(s.items.len(), 2);
         assert!(s.items[0].path.ends_with("B"), "largest first");
         assert!(s.bytes >= 400_000);

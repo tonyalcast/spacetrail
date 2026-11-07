@@ -21,7 +21,11 @@ use spacetrail_core::{
 };
 use spacetrail_macos::system::{DiskStatus, disk_status};
 use spacetrail_macos::{DATA_ROOT, FdaStatus, Firmlinks, MacPlatform, apfs, fda, whole_disk_root};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
+
+/// The last suggestion report: cleanups run from it, never from data sent by the UI.
+#[derive(Default)]
+struct LastReport(std::sync::Mutex<Option<SuggestReport>>);
 
 const FDA_SETTINGS: &str =
     "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_AllFiles";
@@ -210,7 +214,8 @@ async fn get_overview(app: AppHandle) -> Result<Overview, String> {
 
 #[tauri::command]
 async fn get_suggestions(app: AppHandle) -> Result<SuggestReport, String> {
-    tauri::async_runtime::spawn_blocking(move || {
+    let handle = app.clone();
+    let report = tauri::async_runtime::spawn_blocking(move || {
         let home = home()?;
         let user = spacetrail_core::Dirs::from_env().map(|d| d.user_cleaners());
         let progress = |msg: &str| {
@@ -226,6 +231,72 @@ async fn get_suggestions(app: AppHandle) -> Result<SuggestReport, String> {
             &progress,
         )
         .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    *handle
+        .state::<LastReport>()
+        .0
+        .lock()
+        .map_err(|e| e.to_string())? = Some(report.clone());
+    Ok(report)
+}
+
+#[derive(Clone, Serialize)]
+struct CleanupTick {
+    index: usize,
+    total: usize,
+    name: String,
+}
+
+/// Runs the chosen suggestions (by id) from the last report through the
+/// single executor. `manual` items are never run.
+#[tauri::command]
+async fn run_cleanup(
+    app: AppHandle,
+    ids: Vec<String>,
+    permanent: bool,
+) -> Result<Vec<spacetrail_cleaners::executor::StepResult>, String> {
+    let report = app
+        .state::<LastReport>()
+        .0
+        .lock()
+        .map_err(|e| e.to_string())?
+        .clone()
+        .ok_or("Nothing to clean yet: wait for the suggestions to load.")?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let home = home()?;
+        let ctx = spacetrail_cleaners::Context::from_system(home);
+        let journal = journal()?;
+        let chosen: Vec<_> = report
+            .suggestions
+            .iter()
+            .filter(|s| ids.contains(&s.id))
+            .collect();
+        let total = chosen.len();
+        let opts = spacetrail_cleaners::executor::RunOptions {
+            permanent,
+            source: "app: clean selected".into(),
+        };
+        let mut out = Vec::new();
+        for (index, s) in chosen.into_iter().enumerate() {
+            let _ = app.emit(
+                "cleanup-progress",
+                CleanupTick {
+                    index,
+                    total,
+                    name: s.name.clone(),
+                },
+            );
+            out.push(spacetrail_cleaners::executor::run_suggestion(
+                s,
+                &ctx,
+                &spacetrail_cleaners::executor::FinderTrash,
+                &journal,
+                &opts,
+            ));
+        }
+        Ok(out)
     })
     .await
     .map_err(|e| e.to_string())?
@@ -340,6 +411,7 @@ fn main() {
     std::thread::spawn(settings::migrate_from_keychain);
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .manage(LastReport::default())
         .invoke_handler(tauri::generate_handler![
             get_disk_status,
             check_full_disk_access,
@@ -354,7 +426,8 @@ fn main() {
             list_models,
             explain,
             trash_item,
-            undo_trash
+            undo_trash,
+            run_cleanup
         ])
         .run(tauri::generate_context!())
         .expect("error while running spacetrail");

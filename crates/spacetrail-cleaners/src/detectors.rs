@@ -11,7 +11,7 @@ use spacetrail_macos::MacPlatform;
 use spacetrail_macos::docker;
 
 use crate::schema::{Cleaner, Risk};
-use crate::suggest::{Claims, Context, How, Item, Source, Suggestion, age_text, measure};
+use crate::suggest::{Claims, Context, Exec, How, Item, Source, Suggestion, age_text, measure};
 
 /// Default code roots searched for projects (decision Q6).
 pub const DEFAULT_CODE_ROOTS: &[&str] = &[
@@ -40,8 +40,10 @@ fn detector(id: &str, name: &str, risk: Risk, description: &str, reason: &str) -
         items: Vec::new(),
         how: How::default(),
         blocked_by: Vec::new(),
+        apps_to_close: Vec::new(),
         notes: Vec::new(),
         source: Source::Detector,
+        exec: Exec::None,
     }
 }
 
@@ -144,6 +146,7 @@ pub fn projects(
         "Extra working copies of your repositories (e.g. created by Claude Code, Cursor or `git worktree add`). Each one carries its own dependencies and build output.",
         "Removing a worktree keeps its branch and commits, but uncommitted changes in it would be lost; git refuses to remove dirty worktrees unless forced.",
     );
+    worktrees.exec = Exec::RemoveWorktrees;
     worktrees.how = How {
         summary: "Remove worktrees whose work is merged or abandoned (the branch is kept)".into(),
         commands: vec![
@@ -166,6 +169,7 @@ pub fn projects(
             );
             s.category.clone_from(&c.category);
             s.regenerates.clone_from(&c.regenerates);
+            s.exec = Exec::RemoveItems;
             s.how.summary = format!(
                 "Move these folders to the Trash; projects untouched for {} days",
                 r.stale_after / DAY
@@ -344,6 +348,7 @@ pub fn orphaned_workspaces(ctx: &Context, claims: &mut Claims) -> Option<Suggest
         "The folders they describe are gone; the editor never opens them again.",
     );
     s.regenerates = Some("Not needed: the projects no longer exist.".into());
+    s.exec = Exec::RemoveItems;
     s.how.summary = "Move these folders to the Trash (with the editor closed)".into();
     for app in EDITORS {
         let dir = ctx
@@ -386,6 +391,7 @@ pub fn orphaned_workspaces(ctx: &Context, claims: &mut Claims) -> Option<Suggest
             });
         }
         if found {
+            s.apps_to_close.push((*app).to_owned());
             let running = ctx.running(&[(*app).to_owned()]);
             s.blocked_by.extend(running);
         }
@@ -418,6 +424,7 @@ pub fn agent_versions(ctx: &Context, claims: &mut Claims) -> Option<Suggestion> 
         "The active version (target of the `cursor-agent` launcher) is kept.",
     );
     s.regenerates = Some("Not needed: newer versions replace them.".into());
+    s.exec = Exec::RemoveItems;
     s.how.summary = "Move the old versions to the Trash".into();
     let installs = [
         ctx.home.join("Library/Application Support/Cursor/User/globalStorage/anysphere.cursor-agent-worker/agent-cli/.local"),
@@ -575,8 +582,18 @@ pub fn docker(ctx: &Context, claims: &mut Claims) -> Vec<Suggestion> {
             } else {
                 "Run the command below".into()
             },
-            commands: vec![cmd.into_iter().map(str::to_owned).collect()],
+            commands: vec![cmd.iter().map(|a| (*a).to_owned()).collect()],
             instructions: None,
+        };
+        // The item is Docker.raw, shown for context only: never remove it.
+        // Only Docker's own prune command may free this space.
+        s.exec = match (risk, ctx.which("docker")) {
+            (Risk::Review, Some(docker)) => {
+                let mut argv = vec![docker.display().to_string()];
+                argv.extend(cmd.iter().skip(1).map(|a| (*a).to_owned()));
+                Exec::Command { argv }
+            }
+            _ => Exec::None,
         };
         s.notes.push(disk_note.clone());
         s.finish();
@@ -698,6 +715,9 @@ mod tests {
         assert!(ids.contains(&"project-node-modules"), "{ids:?}");
         assert!(ids.contains(&"project-dotnet-build"), "{ids:?}");
         let nm = out.iter().find(|s| s.id == "project-node-modules").unwrap();
+        assert_eq!(nm.exec, Exec::RemoveItems);
+        let wt = out.iter().find(|s| s.id == "git-worktrees").unwrap();
+        assert_eq!(wt.exec, Exec::RemoveWorktrees);
         assert_eq!(
             nm.items.len(),
             2,

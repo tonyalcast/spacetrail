@@ -88,6 +88,13 @@ pub struct TrashRecord {
     /// Set when the item was put back.
     #[serde(default)]
     pub restored: bool,
+    /// "trash" (undoable), "permanent" or "command".
+    #[serde(default = "trash_method")]
+    pub method: String,
+}
+
+fn trash_method() -> String {
+    "trash".to_owned()
 }
 
 /// A checked path ready to be removed.
@@ -342,9 +349,358 @@ fn trash_in(
         kind: again.kind.to_owned(),
         source: source.to_owned(),
         restored: false,
+        method: trash_method(),
     };
     journal.append(&record)?;
     Ok(record)
+}
+
+/// Deletes `path` permanently after the same checks as [`trash`]. Not undoable.
+///
+/// # Errors
+/// A refusal or the deletion's failure.
+pub fn remove_permanently(
+    path: &Path,
+    home: &Path,
+    journal: &Journal,
+    bytes: u64,
+    source: &str,
+) -> Result<TrashRecord, ExecError> {
+    remove_permanently_in(path, home, None, journal, bytes, source)
+}
+
+fn remove_permanently_in(
+    path: &Path,
+    home: &Path,
+    sandbox: Option<&Path>,
+    journal: &Journal,
+    bytes: u64,
+    source: &str,
+) -> Result<TrashRecord, ExecError> {
+    let first = check_in(path, home, sandbox)?;
+    let again = check_in(path, home, sandbox)?;
+    if (again.dev, again.ino) != (first.dev, first.ino) || again.path != first.path {
+        return Err(Refusal::Changed.into());
+    }
+    // std's remove_dir_all never follows symlinks (it works relative to open
+    // directory handles), and a symlink leaf is removed as a link.
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the single executor, after every safety check"
+    )]
+    if again.kind == "folder" {
+        fs::remove_dir_all(&again.path)?;
+    } else {
+        fs::remove_file(&again.path)?;
+    }
+    let record = TrashRecord {
+        id: format!("{}-{}", now(), again.ino),
+        at: now(),
+        original: again.path,
+        trashed_to: PathBuf::new(),
+        bytes,
+        kind: again.kind.to_owned(),
+        source: source.to_owned(),
+        restored: false,
+        method: "permanent".to_owned(),
+    };
+    journal.append(&record)?;
+    Ok(record)
+}
+
+/// Programs never run, whatever a rule says (they would run arbitrary code).
+const FORBIDDEN_PROGRAMS: &[&str] = &[
+    "sh",
+    "bash",
+    "zsh",
+    "fish",
+    "dash",
+    "ksh",
+    "csh",
+    "tcsh",
+    "env",
+    "osascript",
+    "perl",
+    "ruby",
+    "node",
+    "deno",
+    "eval",
+    "xargs",
+    "sudo",
+    "rm",
+    "python",
+    "python3",
+];
+
+/// Result of running a tool's cleanup command.
+#[derive(Debug, Clone, Serialize)]
+pub struct CommandOutcome {
+    /// Exit success.
+    pub ok: bool,
+    /// Exit code, if any.
+    pub code: Option<i32>,
+    /// Last lines of stdout/stderr.
+    pub output: String,
+}
+
+/// Runs `argv` (absolute program path, no shell) with a minimal environment
+/// and a time limit. Only the executor may spawn processes.
+///
+/// # Errors
+/// Invalid program, spawn failure or timeout.
+pub fn run_command(
+    argv: &[String],
+    timeout: std::time::Duration,
+) -> Result<CommandOutcome, ExecError> {
+    use std::process::{Command, Stdio};
+    let prog = argv.first().map(Path::new).ok_or(Refusal::InvalidPath)?;
+    let base = prog
+        .file_name()
+        .map(|n| n.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
+    if !prog.is_absolute()
+        || !prog.is_file()
+        || FORBIDDEN_PROGRAMS.contains(&base.as_str())
+        || base.starts_with("python")
+    {
+        return Err(Refusal::Protected(format!("program {}", prog.display())).into());
+    }
+    let mut path = String::new();
+    if let Some(dir) = prog.parent() {
+        path.push_str(&dir.display().to_string());
+        path.push(':');
+    }
+    path.push_str("/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin");
+    let out_file = tempfile_path("out");
+    let stdout = fs::File::create(&out_file)?;
+    let stderr = stdout.try_clone()?;
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the single executor runs tool cleanups"
+    )]
+    let mut cmd = Command::new(prog);
+    cmd.args(&argv[1..])
+        .env_clear()
+        .env("PATH", path)
+        .env("LC_ALL", "C")
+        .stdin(Stdio::null())
+        .stdout(stdout)
+        .stderr(stderr);
+    if let Some(h) = std::env::var_os("HOME") {
+        cmd.env("HOME", h);
+    }
+    let mut child = cmd.spawn()?;
+    let start = std::time::Instant::now();
+    let status = loop {
+        if let Some(st) = child.try_wait()? {
+            break st;
+        }
+        if start.elapsed() > timeout {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "the command took too long and was stopped",
+            )
+            .into());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    };
+    let text = fs::read_to_string(&out_file).unwrap_or_default();
+    let _ = fs::write(&out_file, b""); // leave no output behind
+    let tail: Vec<&str> = text.lines().rev().take(12).collect();
+    Ok(CommandOutcome {
+        ok: status.success(),
+        code: status.code(),
+        output: tail.into_iter().rev().collect::<Vec<_>>().join("\n"),
+    })
+}
+
+fn tempfile_path(tag: &str) -> PathBuf {
+    std::env::temp_dir().join(format!("spacetrail-{tag}-{}-{}", std::process::id(), now()))
+}
+
+/// Options for running suggestions.
+#[derive(Debug, Clone)]
+pub struct RunOptions {
+    /// Delete permanently instead of moving to the Trash.
+    pub permanent: bool,
+    /// Who asked (journal).
+    pub source: String,
+}
+
+/// What happened to one suggestion.
+#[derive(Debug, Clone, Serialize)]
+pub struct StepResult {
+    /// Suggestion id.
+    pub id: String,
+    /// Suggestion name.
+    pub name: String,
+    /// "trash", "permanent", "command", "worktree" or "skipped".
+    pub method: String,
+    /// At least one action succeeded and none failed.
+    pub ok: bool,
+    /// Items or commands that succeeded / failed.
+    pub done: usize,
+    /// Failed count.
+    pub failed: usize,
+    /// Bytes freed (permanent, command estimate) or moved to the Trash.
+    pub bytes: u64,
+    /// Human messages (errors, skipped reasons, command output).
+    pub messages: Vec<String>,
+    /// Journal ids that can be undone.
+    pub undo_ids: Vec<String>,
+}
+
+/// Carries out one suggestion as decided by the planner. Re-checks open apps,
+/// runs every item through the safety checks, never runs `manual` risk.
+pub fn run_suggestion(
+    s: &crate::suggest::Suggestion,
+    ctx: &crate::suggest::Context,
+    backend: &dyn TrashBackend,
+    journal: &Journal,
+    opts: &RunOptions,
+) -> StepResult {
+    use crate::schema::Risk;
+    use crate::suggest::Exec;
+    let mut r = StepResult {
+        id: s.id.clone(),
+        name: s.name.clone(),
+        method: "skipped".into(),
+        ok: false,
+        done: 0,
+        failed: 0,
+        bytes: 0,
+        messages: Vec::new(),
+        undo_ids: Vec::new(),
+    };
+    if s.risk == Risk::Manual {
+        r.messages
+            .push("spacetrail never cleans “your call” items automatically.".into());
+        return r;
+    }
+    let open = ctx.running(&s.apps_to_close);
+    if !open.is_empty() {
+        r.messages
+            .push(format!("Skipped: close {} first.", open.join(", ")));
+        return r;
+    }
+    let source = format!("{} · {}", opts.source, s.id);
+    match &s.exec {
+        Exec::None => r
+            .messages
+            .push("spacetrail can't do this one for you; see the instructions.".into()),
+        Exec::RemoveItems => {
+            r.method = if opts.permanent { "permanent" } else { "trash" }.into();
+            for item in &s.items {
+                let res = if opts.permanent {
+                    remove_permanently(&item.path, &ctx.home, journal, item.bytes, &source)
+                } else {
+                    trash(&item.path, &ctx.home, backend, journal, item.bytes, &source)
+                };
+                match res {
+                    Ok(rec) => {
+                        r.done += 1;
+                        r.bytes += item.bytes;
+                        if rec.method == "trash" {
+                            r.undo_ids.push(rec.id);
+                        }
+                    }
+                    Err(e) => {
+                        r.failed += 1;
+                        r.messages.push(format!("{}: {e}", item.path.display()));
+                    }
+                }
+            }
+        }
+        Exec::Command { argv } => {
+            r.method = "command".into();
+            match run_command(argv, std::time::Duration::from_secs(15 * 60)) {
+                Ok(out) if out.ok => {
+                    r.done = 1;
+                    r.bytes = s.bytes;
+                    if !out.output.trim().is_empty() {
+                        r.messages.push(out.output);
+                    }
+                }
+                Ok(out) => {
+                    r.failed = 1;
+                    r.messages.push(format!(
+                        "The command failed (exit {:?}): {}",
+                        out.code, out.output
+                    ));
+                }
+                Err(e) => {
+                    r.failed = 1;
+                    r.messages.push(e.to_string());
+                }
+            }
+            let _ = journal.append(&TrashRecord {
+                id: format!("{}-cmd", now()),
+                at: now(),
+                original: PathBuf::from(argv.join(" ")),
+                trashed_to: PathBuf::new(),
+                bytes: r.bytes,
+                kind: "command".into(),
+                source: source.clone(),
+                restored: false,
+                method: "command".into(),
+            });
+        }
+        Exec::RemoveWorktrees => {
+            r.method = "worktree".into();
+            let git = ctx
+                .which("git")
+                .unwrap_or_else(|| PathBuf::from("/usr/bin/git"));
+            for item in &s.items {
+                // Never reaches outside the safety checks: the worktree itself must be removable.
+                if let Err(e) = check(&item.path, &ctx.home) {
+                    r.failed += 1;
+                    r.messages.push(format!("{}: {e}", item.path.display()));
+                    continue;
+                }
+                let p = item.path.display().to_string();
+                let argv = vec![
+                    git.display().to_string(),
+                    "-C".into(),
+                    p.clone(),
+                    "worktree".into(),
+                    "remove".into(),
+                    p.clone(),
+                ];
+                match run_command(&argv, std::time::Duration::from_secs(120)) {
+                    Ok(out) if out.ok => {
+                        r.done += 1;
+                        r.bytes += item.bytes;
+                        let _ = journal.append(&TrashRecord {
+                            id: format!("{}-wt-{}", now(), r.done),
+                            at: now(),
+                            original: item.path.clone(),
+                            trashed_to: PathBuf::new(),
+                            bytes: item.bytes,
+                            kind: "folder".into(),
+                            source: source.clone(),
+                            restored: false,
+                            method: "command".into(),
+                        });
+                    }
+                    Ok(out) => {
+                        r.failed += 1;
+                        r.messages.push(format!(
+                            "{p}: git refused: {}",
+                            out.output.lines().last().unwrap_or("")
+                        ));
+                    }
+                    Err(e) => {
+                        r.failed += 1;
+                        r.messages.push(format!("{p}: {e}"));
+                    }
+                }
+            }
+        }
+    }
+    r.ok = r.done > 0 && r.failed == 0;
+    r
 }
 
 /// Puts a trashed item back where it was, if that place is still free.
@@ -355,7 +711,7 @@ pub fn restore(id: &str, journal: &Journal) -> Result<TrashRecord, ExecError> {
     let mut r = journal
         .records()
         .into_iter()
-        .find(|r| r.id == id && !r.restored)
+        .find(|r| r.id == id && !r.restored && r.method == "trash")
         .ok_or(ExecError::UnknownId)?;
     if fs::symlink_metadata(&r.original).is_ok() {
         return Err(io::Error::new(
@@ -520,6 +876,59 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    #[test]
+    fn permanent_removal_checks_and_journals() {
+        let s = sandbox();
+        let d = s.home.join("Library/Caches/old");
+        fs::create_dir_all(d.join("x")).unwrap();
+        fs::write(d.join("x/f"), b"1").unwrap();
+        let r =
+            remove_permanently_in(&d, &s.home, Some(s.tmp.path()), &s.journal, 1, "test").unwrap();
+        assert_eq!(r.method, "permanent");
+        assert!(!d.exists());
+        assert!(
+            matches!(restore(&r.id, &s.journal), Err(ExecError::UnknownId)),
+            "permanent is not undoable"
+        );
+        assert!(
+            remove_permanently_in(
+                &s.home.join("Library"),
+                &s.home,
+                Some(s.tmp.path()),
+                &s.journal,
+                0,
+                "t"
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn commands_need_absolute_non_shell_programs() {
+        let ok = run_command(
+            &["/usr/bin/true".into()],
+            std::time::Duration::from_secs(10),
+        )
+        .unwrap();
+        assert!(ok.ok);
+        let fail = run_command(
+            &["/usr/bin/false".into()],
+            std::time::Duration::from_secs(10),
+        )
+        .unwrap();
+        assert!(!fail.ok);
+        for bad in [
+            vec!["true".to_owned()],
+            vec!["/bin/sh".into(), "-c".into(), "echo".into()],
+            vec!["/bin/rm".into(), "-rf".into(), "/tmp/x".into()],
+        ] {
+            assert!(
+                run_command(&bad, std::time::Duration::from_secs(5)).is_err(),
+                "{bad:?}"
+            );
+        }
     }
 
     #[test]
