@@ -9,7 +9,7 @@ Status: **draft for approval** (Phase 0). Covers the crate layout, data model, S
 | Topic | Decision | Why |
 |---|---|---|
 | Rust edition | **2024** | It's the current edition, so a new project has nothing to migrate. Its defaults help with the amount of FFI we do: `unsafe extern` blocks and `unsafe_op_in_unsafe_fn` warn-by-default make unsafe boundaries explicit, and the stricter RPIT capture and `if let` scoping rules remove some footguns. |
-| MSRV | **1.85** (first release with edition 2024), checked in CI. `rust-toolchain.toml` pins `stable` for development. | Lowest version edition 2024 allows. Raise it deliberately, not by accident. |
+| MSRV | **1.88** (was 1.85; raised for RUSTSEC-2026-0194 in plist/quick-xml), checked in CI. `rust-toolchain.toml` pins `stable` for development. | Lowest version edition 2024 allows. Raise it deliberately, not by accident. |
 | Minimum macOS | **13 Ventura** | Every API we need is available there: `SF_DATALESS` (10.15), `NSURLVolumeAvailableCapacityForImportantUsageKey` (10.13), `proc_pid_rusage` V4 (10.13), FSEvents file events (10.7), `launchctl bootstrap` (10.10). 13 is also the oldest release still getting security updates in practice. Developed and tested on macOS 26. |
 | Async runtime | **None.** Plain threads + `crossbeam-channel`. | The daemon has a handful of long-lived jobs (sampler, scanner, FSEvents run loop, socket server, live poller). Threads keep idle CPU near zero, keep backtraces simple, and drop a big dependency tree. A future GUI can still talk to the socket from any runtime. |
 | Units | Allocated bytes by default; apparent size also stored. Decimal (SI) display by default to match Finder; `--binary` switches to IEC. | Matches what users see in Finder. |

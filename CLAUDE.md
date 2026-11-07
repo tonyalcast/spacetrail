@@ -26,6 +26,7 @@ cargo insta review                           # TUI / output snapshots
 - `spacetrail-store`: the only crate that talks SQL.
 - `spacetrail-cleaners`: schema, planner, and the **single executor**, which is the only code that may delete files or spawn processes.
 - `spacetrail-proto`: serde wire types only. `spacetrail-daemon`: daemon library. `spacetrail-cli`: the binary (CLI, TUI, HTML report, `daemon run`).
+- `apps/desktop` (`spacetrail-app`): Tauri desktop app; the only crate allowed to use the network (`reqwest`), see rule 6. Build with `cd apps/desktop && cargo tauri build` (signs with the `spacetrail-dev` identity).
 - Dependency direction: cli → daemon → cleaners → store → core; macos → core; proto is a leaf. No cycles.
 
 ## Non-negotiable safety rules
@@ -34,10 +35,10 @@ cargo insta review                           # TUI / output snapshots
 3. Dry-run is the default; Trash is the default; `manual` risk is never auto-deleted; autoclean only runs `safe` cleaners the user enabled, with caps.
 4. Community/user cleaners can't execute commands unless the user opts in per cleaner (`cleaners.allow_commands`). Commands are argv arrays, never shell strings.
 5. Never read or open dataless (cloud placeholder) files: `lstat` only. Never require root.
-6. No telemetry, no network calls. The tool works fully offline.
+6. No telemetry. The CLI, the libraries and the daemon make no network calls and work fully offline. **Single exception, requested by the author (2026-11-05):** the desktop app (`apps/desktop`) may call the LLM provider the user configured, and only when the user presses "Explain" on an item. It sends metadata only (path with home shown as `~`, size, dates, download origin, names of up to 30 items inside a folder, which the user can turn off). It never sends file contents and shows the user exactly what was sent. API keys live only in the macOS Keychain. Any other network use needs the author's explicit approval.
 
 ## Conventions
-- Edition 2024, MSRV 1.85. `thiserror` in libraries, `anyhow` only in the binary. `tracing` for logs, never `println!` in libraries.
+- Edition 2024, MSRV 1.88 (raised from 1.85 on 2026-11-05 for the plist/quick-xml fix RUSTSEC-2026-0194). `thiserror` in libraries, `anyhow` only in the binary. `tracing` for logs, never `println!` in libraries.
 - Sizes: store bytes as `u64`. Default display is allocated bytes in decimal units (Finder-compatible); `--binary` switches to IEC.
 - Every CLI command supports `--json` (stable, documented shape) and honors `NO_COLOR`. Never use color as the only signal: risk is always icon + label.
 - Unreadable means "unknown size", never 0. Cloud-only files are reported separately.

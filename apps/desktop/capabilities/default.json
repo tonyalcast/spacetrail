@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "The main window may call spacetrail's read-only commands and listen to progress events.",
+  "description": "The main window may call spacetrail's read-only commands, listen to progress events, and be dragged by its custom title bar.",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": ["core:default", "core:window:allow-start-dragging"]
 }

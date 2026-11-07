@@ -6,6 +6,9 @@ all-features = true
 [advisories]
 version = 2
 yanked = "deny"
+# Vulnerabilities always fail. "Unmaintained" fails only for our direct dependencies:
+# Tauri pulls unmaintained unic-* crates transitively with no upgrade available.
+unmaintained = "workspace"
 ignore = []
 
 [licenses]
@@ -21,6 +24,8 @@ allow = [
   "ISC",
   "Zlib",
   "Unicode-3.0",
+  # Weak, file-level copyleft; used by Tauri's HTML/CSS parsers (cssparser, selectors). Compatible with MIT/Apache distribution.
+  "MPL-2.0",
 ]
 
 [bans]

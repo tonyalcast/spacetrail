@@ -6,6 +6,10 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod facts;
+mod llm;
+mod settings;
+
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -74,9 +78,22 @@ struct Folder {
 }
 
 #[derive(Debug, Serialize)]
-struct LargeFile {
+struct FileRow {
     path: String,
     bytes: u64,
+    /// Last modification (Unix seconds), 0 if unknown.
+    modified: u64,
+}
+
+fn file_row(fl: &Firmlinks, f: &spacetrail_core::TopFile) -> FileRow {
+    FileRow {
+        path: display(fl, &f.path),
+        bytes: f.alloc,
+        modified: f
+            .modified
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map_or(0, |d| d.as_secs()),
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -87,7 +104,8 @@ struct Overview {
     privacy_protected: usize,
     other_owner: usize,
     tree: Folder,
-    largest_files: Vec<LargeFile>,
+    largest_files: Vec<FileRow>,
+    oldest_files: Vec<FileRow>,
 }
 
 #[derive(Clone, Serialize)]
@@ -153,8 +171,11 @@ async fn get_overview(app: AppHandle) -> Result<Overview, String> {
                     std::thread::sleep(Duration::from_millis(300));
                 }
             });
+            // Generous lists: the UI filters system files out client-side.
             let opts = ScanOptions {
-                top_files: 40,
+                top_files: 400,
+                oldest_files: 400,
+                oldest_min_bytes: 5_000_000,
                 ..ScanOptions::default()
             };
             let r = scan(&root, &MacPlatform, &opts, &progress);
@@ -179,14 +200,8 @@ async fn get_overview(app: AppHandle) -> Result<Overview, String> {
             privacy_protected: privacy.len(),
             other_owner: other.len(),
             tree: folder(&res.tree, NodeId::ROOT, &fl, 0, min),
-            largest_files: res
-                .top_files
-                .iter()
-                .map(|f| LargeFile {
-                    path: display(&fl, &f.path),
-                    bytes: f.alloc,
-                })
-                .collect(),
+            largest_files: res.top_files.iter().map(|f| file_row(&fl, f)).collect(),
+            oldest_files: res.oldest_files.iter().map(|f| file_row(&fl, f)).collect(),
         })
     })
     .await
@@ -216,6 +231,71 @@ async fn get_suggestions(app: AppHandle) -> Result<SuggestReport, String> {
     .map_err(|e| e.to_string())?
 }
 
+#[tauri::command]
+fn get_settings() -> settings::SettingsView {
+    settings::view()
+}
+
+#[tauri::command]
+fn save_settings(settings: settings::Settings) -> Result<settings::SettingsView, String> {
+    settings::save(&settings)?;
+    Ok(settings::view())
+}
+
+#[tauri::command]
+fn set_api_key(
+    provider: settings::Provider,
+    key: String,
+) -> Result<settings::SettingsView, String> {
+    settings::set_key(provider, &key)?;
+    Ok(settings::view())
+}
+
+#[tauri::command]
+async fn list_models(provider: settings::Provider) -> Result<Vec<llm::ModelInfo>, String> {
+    let s = settings::load();
+    let key = settings::key(provider)?;
+    llm::list_models(provider, &s, key.as_deref()).await
+}
+
+#[derive(Debug, Serialize)]
+struct Explanation {
+    provider: &'static str,
+    model: String,
+    answer: llm::Answer,
+    /// Exactly what was sent, shown to the user.
+    sent: facts::Facts,
+}
+
+/// Asks the active LLM what `path` is. The only network call in spacetrail,
+/// made only when the user presses "Explain".
+#[tauri::command]
+async fn explain(path: String, hint: Option<facts::Hint>) -> Result<Explanation, String> {
+    let s = settings::load();
+    let provider = s
+        .active
+        .ok_or("No AI provider configured. Open Settings to add an API key.")?;
+    let key = settings::key(provider)?;
+    let home = home()?;
+    let p = PathBuf::from(&path);
+    if !p.is_absolute() {
+        return Err("Path must be absolute".into());
+    }
+    let share = s.share_folder_listing;
+    let hint = hint.unwrap_or_default();
+    let sent = tauri::async_runtime::spawn_blocking(move || facts::gather(&p, &home, &hint, share))
+        .await
+        .map_err(|e| e.to_string())?;
+    let json = serde_json::to_string_pretty(&sent).map_err(|e| e.to_string())?;
+    let (answer, model) = llm::explain(provider, &s, key.as_deref(), &json).await?;
+    Ok(Explanation {
+        provider: provider.label(),
+        model,
+        answer,
+        sent,
+    })
+}
+
 fn main() {
     // Never download cloud files, whatever happens below.
     let _ = spacetrail_macos::prevent_materialization();
@@ -228,7 +308,12 @@ fn main() {
             reveal_in_finder,
             restart,
             get_overview,
-            get_suggestions
+            get_suggestions,
+            get_settings,
+            save_settings,
+            set_api_key,
+            list_models,
+            explain
         ])
         .run(tauri::generate_context!())
         .expect("error while running spacetrail");

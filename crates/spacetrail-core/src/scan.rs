@@ -16,7 +16,7 @@ use std::io::ErrorKind;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering};
 use std::time::{Duration, Instant, SystemTime};
 
 use rayon::prelude::*;
@@ -31,6 +31,10 @@ pub struct ScanOptions {
     pub one_file_system: bool,
     /// How many of the largest files to keep (default 200).
     pub top_files: usize,
+    /// How many of the least recently modified files to keep (default 0).
+    pub oldest_files: usize,
+    /// Only files at least this large compete for the oldest list (default 10 MB).
+    pub oldest_min_bytes: u64,
     /// Worker threads; `None` uses one per CPU.
     pub threads: Option<usize>,
 }
@@ -40,6 +44,8 @@ impl Default for ScanOptions {
         Self {
             one_file_system: true,
             top_files: 200,
+            oldest_files: 0,
+            oldest_min_bytes: 10_000_000,
             threads: None,
         }
     }
@@ -113,6 +119,8 @@ pub struct ScanResult {
     pub tree: DirTree,
     /// Largest files, biggest first.
     pub top_files: Vec<TopFile>,
+    /// Least recently modified files (at least `oldest_min_bytes`), oldest first.
+    pub oldest_files: Vec<TopFile>,
     /// Directories that could not be listed.
     pub unreadable: Vec<Unreadable>,
     /// Directories skipped because they are on another filesystem.
@@ -155,6 +163,10 @@ struct Shared<'a> {
     top: Mutex<BinaryHeap<Reverse<TopFile>>>,
     /// Smallest size currently in a full `top` heap; lets most files skip the lock.
     top_floor: AtomicU64,
+    /// Max-heap by mtime: keeps the `oldest_files` smallest mtimes.
+    oldest: Mutex<BinaryHeap<(i64, TopFile)>>,
+    /// Newest mtime in a full `oldest` heap; newer files skip the lock.
+    oldest_ceiling: AtomicI64,
     unreadable: Mutex<Vec<Unreadable>>,
     skipped_mounts: Mutex<Vec<PathBuf>>,
 }
@@ -168,6 +180,38 @@ impl Shared<'_> {
             .lock()
             .expect("hardlink set poisoned")
             .insert(key)
+    }
+
+    fn offer_oldest_file(&self, path: impl FnOnce() -> PathBuf, meta: &Metadata, alloc: u64) {
+        let n = self.opts.oldest_files;
+        let mtime = meta.mtime();
+        if n == 0
+            || alloc < self.opts.oldest_min_bytes
+            || mtime >= self.oldest_ceiling.load(Ordering::Relaxed)
+        {
+            return;
+        }
+        let mut heap = self.oldest.lock().expect("oldest-files heap poisoned");
+        if heap.len() >= n && heap.peek().is_some_and(|(newest, _)| *newest <= mtime) {
+            return;
+        }
+        heap.push((
+            mtime,
+            TopFile {
+                alloc,
+                path: path(),
+                apparent: meta.len(),
+                modified: meta.modified().ok(),
+            },
+        ));
+        if heap.len() > n {
+            heap.pop();
+        }
+        if heap.len() >= n
+            && let Some((newest, _)) = heap.peek()
+        {
+            self.oldest_ceiling.store(*newest, Ordering::Relaxed);
+        }
     }
 
     fn offer_top_file(&self, path: impl FnOnce() -> PathBuf, meta: &Metadata, alloc: u64) {
@@ -188,10 +232,10 @@ impl Shared<'_> {
         if heap.len() > n {
             heap.pop();
         }
-        if heap.len() >= n {
-            if let Some(Reverse(min)) = heap.peek() {
-                self.top_floor.store(min.alloc, Ordering::Relaxed);
-            }
+        if heap.len() >= n
+            && let Some(Reverse(min)) = heap.peek()
+        {
+            self.top_floor.store(min.alloc, Ordering::Relaxed);
         }
     }
 }
@@ -243,6 +287,8 @@ pub fn scan(
             .collect(),
         top: Mutex::new(BinaryHeap::new()),
         top_floor: AtomicU64::new(0),
+        oldest: Mutex::new(BinaryHeap::new()),
+        oldest_ceiling: AtomicI64::new(i64::MAX),
         unreadable: Mutex::new(Vec::new()),
         skipped_mounts: Mutex::new(Vec::new()),
     };
@@ -260,6 +306,13 @@ pub fn scan(
         .map(|Reverse(f)| f)
         .collect();
     top_files.sort_by(|a, b| b.alloc.cmp(&a.alloc).then_with(|| a.path.cmp(&b.path)));
+    let mut oldest = shared
+        .oldest
+        .into_inner()
+        .expect("oldest-files heap poisoned")
+        .into_vec();
+    oldest.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.path.cmp(&b.1.path)));
+    let oldest_files = oldest.into_iter().map(|(_, f)| f).collect();
     let mut unreadable = shared.unreadable.into_inner().expect("poisoned");
     unreadable.sort_by(|a, b| a.path.cmp(&b.path));
     let mut skipped_mounts = shared.skipped_mounts.into_inner().expect("poisoned");
@@ -269,6 +322,7 @@ pub fn scan(
         root: root.to_owned(),
         tree: root_node.into_tree(),
         top_files,
+        oldest_files,
         unreadable,
         skipped_mounts,
         started_at,
@@ -358,6 +412,7 @@ fn walk_dir(shared: &Shared<'_>, path: PathBuf, name: OsString, meta: &Metadata)
         node.own.newest_mtime = node.own.newest_mtime.max(m.mtime());
         if m.is_file() {
             shared.offer_top_file(|| entry.path(), &m, alloc);
+            shared.offer_oldest_file(|| entry.path(), &m, alloc);
         }
     }
 

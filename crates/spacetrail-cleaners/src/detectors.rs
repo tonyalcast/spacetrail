@@ -218,11 +218,11 @@ pub fn projects(
         let mut inside_artifact = vec![false; tree.len()];
         for id in tree.ids() {
             let n = tree.get(id);
-            if let Some(p) = n.parent {
-                if inside_artifact[p.index()] || artifact[p.index()].is_some() {
-                    inside_artifact[id.index()] = true;
-                    continue;
-                }
+            if let Some(p) = n.parent
+                && (inside_artifact[p.index()] || artifact[p.index()].is_some())
+            {
+                inside_artifact[id.index()] = true;
+                continue;
             }
             let name = n.name.to_string_lossy();
             if !artifact_names.contains(name.as_ref()) {
@@ -316,12 +316,13 @@ fn percent_decode(s: &str) -> String {
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;
     while i < bytes.len() {
-        if bytes[i] == b'%' && i + 2 < bytes.len() {
-            if let Ok(v) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
-                out.push(v);
-                i += 3;
-                continue;
-            }
+        if bytes[i] == b'%'
+            && i + 2 < bytes.len()
+            && let Ok(v) = u8::from_str_radix(&s[i + 1..i + 3], 16)
+        {
+            out.push(v);
+            i += 3;
+            continue;
         }
         out.push(bytes[i]);
         i += 1;
@@ -451,23 +452,22 @@ pub fn agent_versions(ctx: &Context, claims: &mut Claims) -> Option<Suggestion> 
             });
         }
         // Leftover downloads next to the install.
-        if let Some(agent_cli) = base.parent() {
-            if let Ok(entries) = std::fs::read_dir(agent_cli) {
-                for e in entries.flatten() {
-                    let p = e.path();
-                    if p.extension().is_some_and(|x| x == "gz")
-                        && p.to_string_lossy().contains("cursor-agent")
-                    {
-                        if let Some(m) = measure(&p) {
-                            claims.claim(p.clone(), m.bytes);
-                            s.items.push(Item {
-                                path: p,
-                                bytes: m.bytes,
-                                newest_mtime: m.newest_mtime,
-                                note: Some("leftover download".into()),
-                            });
-                        }
-                    }
+        if let Some(agent_cli) = base.parent()
+            && let Ok(entries) = std::fs::read_dir(agent_cli)
+        {
+            for e in entries.flatten() {
+                let p = e.path();
+                if p.extension().is_some_and(|x| x == "gz")
+                    && p.to_string_lossy().contains("cursor-agent")
+                    && let Some(m) = measure(&p)
+                {
+                    claims.claim(p.clone(), m.bytes);
+                    s.items.push(Item {
+                        path: p,
+                        bytes: m.bytes,
+                        newest_mtime: m.newest_mtime,
+                        note: Some("leftover download".into()),
+                    });
                 }
             }
         }

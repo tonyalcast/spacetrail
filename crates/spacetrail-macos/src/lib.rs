@@ -11,6 +11,8 @@ pub mod docker;
 pub mod fda;
 pub mod firmlinks;
 pub mod hints;
+pub mod keychain;
+pub mod metadata;
 pub mod mounts;
 mod probe;
 pub mod process;

@@ -234,3 +234,56 @@ main { max-width: 1120px; margin: 0 auto; padding: 8px 24px 140px; display: grid
 .tooltip b { display: block; font-size: 13px; margin-bottom: 2px; word-break: break-all; }
 
 .empty { color: var(--muted); padding: 24px 0; text-align: center; }
+
+/* Files box */
+.files-box { margin-top: 18px; }
+.files-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.switch { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
+.switch input { width: 16px; height: 16px; accent-color: var(--accent); }
+#files-hint { margin: 8px 0 0; }
+.rows li { grid-template-columns: 84px 1fr auto auto; }
+.ask { white-space: nowrap; }
+
+/* Treemap explain button */
+.tm-ask {
+  position: absolute; top: 5px; right: 5px; z-index: 3; display: none;
+  font: inherit; font-size: 11.5px; font-weight: 600; border: 0; border-radius: 6px; padding: 2px 7px;
+  background: rgba(0, 0, 0, .45); color: #fff; cursor: pointer;
+}
+.tm-cell:hover .tm-ask, .tm-cell:focus-within .tm-ask { display: block; }
+
+/* Modals */
+.modal { border: 0; padding: 0; border-radius: 16px; background: var(--card); color: var(--text); box-shadow: 0 24px 80px rgba(0, 0, 0, .35); width: min(640px, calc(100vw - 48px)); max-height: calc(100vh - 80px); }
+.modal::backdrop { background: rgba(10, 12, 16, .45); backdrop-filter: blur(2px); }
+.modal-inner { padding: 22px 24px; display: grid; gap: 12px; }
+.modal-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.modal-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 6px; }
+.modal h3 { margin-top: 4px; }
+.field { display: grid; gap: 6px; }
+.label { font-size: 12.5px; font-weight: 600; color: var(--muted); }
+.modal input[type="password"], .modal input[type="text"], .modal select {
+  font: inherit; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--text); width: 100%;
+}
+.row { display: flex; gap: 8px; align-items: center; }
+.row > input, .row > select { flex: 1; min-width: 0; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+.seg button { font: inherit; font-size: 13px; border: 0; background: transparent; color: var(--text); padding: 6px 12px; cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button[aria-checked="true"] { background: var(--accent); color: var(--accent-text); }
+.panel { border: 1px solid var(--line); border-radius: 12px; padding: 14px; display: grid; gap: 10px; }
+.ok-text { color: var(--safe); font-size: 12.5px; }
+.err-text { color: var(--crit); font-size: 12.5px; white-space: pre-wrap; }
+
+/* Explanation */
+.ex-title { word-break: break-word; }
+.ex-path { word-break: break-all; margin-top: 2px; }
+.verdict { display: flex; gap: 12px; align-items: center; padding: 12px 14px; border-radius: 12px; font-weight: 650; }
+.verdict.safe { background: var(--safe-bg); color: var(--safe); }
+.verdict.caution { background: var(--review-bg); color: var(--review); }
+.verdict.keep { background: color-mix(in srgb, var(--crit) 14%, transparent); color: var(--crit); }
+.verdict .v-icon { font-size: 22px; }
+.ex-sec h4 { margin: 0 0 2px; font-size: 13px; color: var(--muted); font-weight: 650; }
+.ex-sec p { margin: 0; }
+.ex-foot { border-top: 1px solid var(--line); padding-top: 10px; }
+.ex-foot summary { cursor: pointer; }
+.ex-foot pre { background: var(--track); border-radius: 8px; padding: 10px; overflow: auto; max-height: 220px; font-size: 12px; }

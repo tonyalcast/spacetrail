@@ -14,6 +14,7 @@ libc.workspace = true
 objc2.workspace = true
 objc2-foundation = { workspace = true, features = ["NSURL", "NSString", "NSError", "NSValue", "NSObject"] }
 plist.workspace = true
+security-framework.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 spacetrail-core.workspace = true

@@ -69,10 +69,10 @@ pub(crate) fn run(probe: Probe) -> io::Result<Vec<u8>> {
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    if probe.needs_home() {
-        if let Some(home) = std::env::var_os("HOME") {
-            cmd.env("HOME", home);
-        }
+    if probe.needs_home()
+        && let Some(home) = std::env::var_os("HOME")
+    {
+        cmd.env("HOME", home);
     }
     let mut child = cmd.spawn()?;
     let mut stdout = child.stdout.take().expect("piped");

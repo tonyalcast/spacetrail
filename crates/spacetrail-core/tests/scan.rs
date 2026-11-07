@@ -229,6 +229,49 @@ fn top_files_are_bounded_and_sorted() {
 }
 
 #[test]
+fn oldest_files_are_bounded_sorted_and_size_filtered() {
+    let tmp = tempfile::tempdir().unwrap();
+    let r = tmp.path();
+    let set_age = |p: &Path, days: u64| {
+        let t = std::time::SystemTime::now() - std::time::Duration::from_secs(days * 86_400);
+        fs::File::options()
+            .write(true)
+            .open(p)
+            .unwrap()
+            .set_modified(t)
+            .unwrap();
+    };
+    for (i, days) in [400u64, 10, 900, 50, 2000].iter().enumerate() {
+        let p = r.join(format!("d{i}/f.bin"));
+        write(&p, 200_000);
+        set_age(&p, *days);
+    }
+    let tiny = r.join("tiny.txt");
+    write(&tiny, 10);
+    set_age(&tiny, 5000);
+    let opts = ScanOptions {
+        oldest_files: 3,
+        oldest_min_bytes: 100_000,
+        ..ScanOptions::default()
+    };
+    let res = run_with(r, &GenericPlatform, &opts);
+    let days: Vec<_> = res
+        .oldest_files
+        .iter()
+        .map(|f| {
+            f.path
+                .parent()
+                .unwrap()
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect();
+    assert_eq!(days, ["d4", "d2", "d0"], "oldest first, tiny file excluded");
+}
+
+#[test]
 fn cancelled_scan_is_marked() {
     let tmp = tempfile::tempdir().unwrap();
     write(&tmp.path().join("a/b/c.bin"), 10);

@@ -12,6 +12,7 @@
     <div class="titlebar-actions">
       <span id="activity" class="activity" hidden><span class="spinner"></span><span id="activity-text"></span></span>
       <button id="rescan" class="btn ghost" type="button">Rescan</button>
+      <button id="open-settings" class="btn ghost" type="button" aria-label="Settings" title="Settings">⚙︎ Settings</button>
     </div>
   </header>
 
@@ -57,10 +58,17 @@
         <div class="loading" id="tm-loading"><span class="spinner"></span><span id="tm-progress">Scanning your disk…</span></div>
       </div>
       <div id="tm-foot" class="tm-foot muted small"></div>
-      <details id="files-box" class="files-box" hidden>
-        <summary>Largest files</summary>
+      <div id="files-box" class="files-box" hidden>
+        <div class="files-head">
+          <div class="tabs" role="tablist">
+            <button class="tab" id="tab-largest" role="tab" type="button" aria-selected="true">Largest files</button>
+            <button class="tab" id="tab-oldest" role="tab" type="button" aria-selected="false">Oldest files</button>
+          </div>
+          <label class="switch"><input type="checkbox" id="hide-system" checked> Hide system files</label>
+        </div>
+        <p id="files-hint" class="muted small"></p>
         <ul id="files" class="rows"></ul>
-      </details>
+      </div>
     </section>
 
     <section class="card">
@@ -93,6 +101,49 @@
   </footer>
 
   <div id="tooltip" class="tooltip" role="tooltip" hidden></div>
+
+  <dialog id="settings" class="modal">
+    <form method="dialog" class="modal-inner">
+      <div class="modal-head">
+        <h2>Settings</h2>
+        <button class="btn ghost tiny" value="close" aria-label="Close">✕</button>
+      </div>
+      <h3>AI explanations</h3>
+      <p class="muted small">The ✨ Explain button asks an AI model what a file or folder is and whether deleting it is safe. It is only used when you press it. spacetrail sends the path (with your user folder shown as ~), size, dates, where it was downloaded from and the names of a few items inside a folder. It never sends what is inside your files. Keys are stored in your macOS Keychain.</p>
+
+      <div class="field">
+        <span class="label">Use</span>
+        <div class="seg" id="provider-seg" role="radiogroup"></div>
+      </div>
+      <div id="provider-panels"></div>
+
+      <div class="field">
+        <label class="label" for="language">Answer language</label>
+        <select id="language">
+          <option>Spanish</option><option>English</option><option>Portuguese</option><option>French</option><option>German</option><option>Italian</option>
+        </select>
+      </div>
+      <label class="switch"><input type="checkbox" id="share-listing"> Include the names of the first items inside a folder (helps the model a lot)</label>
+      <div class="modal-foot">
+        <span id="settings-status" class="muted small"></span>
+        <button class="btn primary" value="close">Done</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="explain" class="modal">
+    <div class="modal-inner">
+      <div class="modal-head">
+        <div>
+          <div class="muted small">Explain</div>
+          <h2 id="ex-title" class="ex-title"></h2>
+          <div id="ex-path" class="muted small mono ex-path"></div>
+        </div>
+        <button class="btn ghost tiny" type="button" id="ex-close" aria-label="Close">✕</button>
+      </div>
+      <div id="ex-body"></div>
+    </div>
+  </dialog>
   <script src="app.js"></script>
 </body>
 </html>

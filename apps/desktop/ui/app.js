@@ -261,6 +261,11 @@ function renderTreemap() {
     } else {
       tip(cell, () => `<b>Files and small folders</b>${bytes(r.n.value)} not shown individually.`);
     }
+    if (f && r.w > 90 && r.h > 50) {
+      const ask = el("button", { class: "tm-ask", type: "button", text: "✨ Explain" });
+      ask.addEventListener("click", (e) => { e.stopPropagation(); hideTip(); explainItem(f.path, { bytes: f.bytes }); });
+      cell.append(ask);
+    }
     if (r.w > 70 && r.h > 36) {
       cell.append(el("div", { class: "tm-name", text: f ? r.n.label : "Files & small folders" }), el("div", { class: "tm-size", text: bytes(r.n.value) }));
     }
@@ -286,15 +291,49 @@ function renderOverviewFoot() {
   foot.replaceChildren(el("span", { text: `Scanned ${ov.totals.files.toLocaleString()} files in ${ov.elapsed_secs.toFixed(0)} s` }));
   if (ov.privacy_protected > 0) foot.append(el("span", { text: `🔐 ${ov.privacy_protected} folders hidden by macOS privacy (size unknown)` }));
   if (ov.reconciliation?.unattributed > 1e9) foot.append(el("span", { text: `${bytes(ov.reconciliation.unattributed)} of your data couldn't be measured` }));
-  const list = $("files");
-  list.replaceChildren(...ov.largest_files.slice(0, 15).map((f) => fileRow(f.path, f.bytes)));
   $("files-box").hidden = !ov.largest_files.length;
+  renderFiles();
 }
 
-function fileRow(path, size, note) {
+// ───────────────────────── largest / oldest files ─────────────────────────
+const SYSTEM_PREFIXES = ["/System/", "/Library/", "/private/", "/usr/", "/bin/", "/sbin/", "/cores/", "/opt/homebrew/Cellar/"];
+/// macOS and app internals: things you don't manage file by file.
+function isSystem(path) {
+  return SYSTEM_PREFIXES.some((p) => path.startsWith(p)) || /\.app\//.test(path) || /\.(framework|bundle|kext)\//.test(path);
+}
+
+function ago(unix) {
+  if (!unix) return "unknown date";
+  const days = Math.floor((Date.now() / 1000 - unix) / 86400);
+  if (days < 1) return "today";
+  if (days < 60) return `${days} days ago`;
+  if (days < 730) return `${Math.round(days / 30)} months ago`;
+  return `${(days / 365).toFixed(1)} years ago`;
+}
+
+let filesTab = "largest";
+function renderFiles() {
+  const ov = state.overview;
+  if (!ov) return;
+  const hide = $("hide-system").checked;
+  try { localStorage.setItem("hideSystem", hide ? "1" : "0"); } catch { /* storage unavailable */ }
+  const src = filesTab === "largest" ? ov.largest_files : ov.oldest_files;
+  const rows = src.filter((f) => !hide || !isSystem(f.path)).slice(0, 20);
+  $("tab-largest").setAttribute("aria-selected", String(filesTab === "largest"));
+  $("tab-oldest").setAttribute("aria-selected", String(filesTab === "oldest"));
+  $("files-hint").textContent = filesTab === "oldest"
+    ? "Files of 5 MB or more that haven't changed in the longest time: good candidates to review."
+    : "The biggest single files on your disk.";
+  $("files").replaceChildren(...rows.map((f) => fileRow(f.path, f.bytes, filesTab === "oldest" ? `modified ${ago(f.modified)}` : null)));
+  if (!rows.length) $("files").append(el("li", { class: "empty", text: "Nothing to show with the current filter." }));
+}
+
+function fileRow(path, size, note, hint) {
   return el("li", {},
     el("span", { class: "sz", text: bytes(size) }),
     el("span", { class: "path", title: path }, tilde(path), note ? el("span", { class: "note", text: note }) : null),
+    el("button", { class: "btn tiny ghost ask", type: "button", text: "✨ Explain", title: "Ask the AI what this is and whether deleting it is safe",
+      onclick: () => explainItem(path, { bytes: size, spacetrail_note: hint || null }) }),
     el("button", { class: "btn tiny ghost", type: "button", text: "Show in Finder", onclick: () => invoke("reveal_in_finder", { path }).catch(alert) }));
 }
 
@@ -357,7 +396,7 @@ function card(s) {
   if (s.notes?.length) body.append(el("ul", { class: "notes" }, s.notes.map((n) => el("li", { text: n }))));
   if (s.items.length) {
     const det = el("details", {}, el("summary", { text: s.items.length === 1 ? "Show location" : `Show ${s.items.length} items` }));
-    det.append(el("ul", { class: "rows" }, s.items.slice(0, 60).map((i) => fileRow(i.path, i.bytes, i.note))));
+    det.append(el("ul", { class: "rows" }, s.items.slice(0, 60).map((i) => fileRow(i.path, i.bytes, i.note, `${s.name} (spacetrail risk: ${s.risk})`))));
     body.append(det);
   }
 
@@ -440,6 +479,154 @@ listen("suggest-progress", (e) => {
 });
 
 $("rescan").addEventListener("click", loadAll);
+$("tab-largest").addEventListener("click", () => { filesTab = "largest"; renderFiles(); });
+$("tab-oldest").addEventListener("click", () => { filesTab = "oldest"; renderFiles(); });
+$("hide-system").addEventListener("change", renderFiles);
+try { $("hide-system").checked = localStorage.getItem("hideSystem") !== "0"; } catch { /* storage unavailable */ }
+
+// ───────────────────────── settings ─────────────────────────
+const PROVIDERS = [
+  { id: "anthropic", label: "Anthropic", keyHint: "sk-ant-…", needsKey: true },
+  { id: "openai", label: "OpenAI", keyHint: "sk-…", needsKey: true },
+  { id: "compatible", label: "OpenAI-compatible", keyHint: "optional (e.g. OpenRouter key)", needsKey: false },
+];
+let settingsView = null;
+
+async function openSettings() {
+  settingsView = await invoke("get_settings");
+  renderSettings();
+  $("settings").showModal();
+}
+
+function hasKey(id) {
+  return (settingsView.has_key || []).some(([p, has]) => p === id && has);
+}
+
+async function saveSettings(patch) {
+  settingsView = await invoke("save_settings", { settings: { ...settingsView.settings, ...patch } });
+  $("settings-status").textContent = "Saved ✓";
+  setTimeout(() => ($("settings-status").textContent = ""), 1500);
+}
+
+function renderSettings() {
+  const st = settingsView.settings;
+  const seg = $("provider-seg");
+  seg.replaceChildren(...PROVIDERS.map((p) => el("button", { type: "button", role: "radio", "aria-checked": String(st.active === p.id), text: p.label,
+    onclick: async () => { await saveSettings({ active: p.id }); renderSettings(); } })));
+  const panels = $("provider-panels");
+  panels.replaceChildren();
+  const p = PROVIDERS.find((x) => x.id === st.active);
+  if (!p) {
+    panels.append(el("p", { class: "muted small", text: "Pick a provider above to set it up." }));
+  } else {
+    const keyInput = el("input", { type: "password", placeholder: hasKey(p.id) ? "•••••••• saved in Keychain (type to replace)" : p.keyHint, autocomplete: "off", spellcheck: "false" });
+    const keyMsg = el("span", { class: hasKey(p.id) ? "ok-text" : "muted small", text: hasKey(p.id) ? "Key saved in Keychain ✓" : p.needsKey ? "No key saved yet" : "" });
+    const saveKey = el("button", { class: "btn", type: "button", text: "Save key" });
+    saveKey.addEventListener("click", async () => {
+      try { settingsView = await invoke("set_api_key", { provider: p.id, key: keyInput.value }); keyInput.value = ""; renderSettings(); loadModels(); }
+      catch (e) { keyMsg.className = "err-text"; keyMsg.textContent = String(e); }
+    });
+    const removeKey = el("button", { class: "btn ghost", type: "button", text: "Remove" });
+    removeKey.hidden = !hasKey(p.id);
+    removeKey.addEventListener("click", async () => { settingsView = await invoke("set_api_key", { provider: p.id, key: "" }); renderSettings(); });
+
+    const modelKey = `${p.id}_model`;
+    const modelSel = el("select", { id: "model-select" });
+    const current = st[modelKey];
+    modelSel.append(el("option", { value: current || "", text: current || "— load the model list —" }));
+    modelSel.addEventListener("change", () => saveSettings({ [modelKey]: modelSel.value }));
+    const modelMsg = el("span", { class: "muted small", id: "model-msg" });
+    const load = el("button", { class: "btn", type: "button", text: "Load models" });
+    load.addEventListener("click", loadModels);
+
+    const panel = el("div", { class: "panel" },
+      el("div", { class: "field" }, el("span", { class: "label", text: `${p.label} API key` }), el("div", { class: "row" }, keyInput, saveKey, removeKey), keyMsg));
+    if (p.id === "compatible") {
+      const url = el("input", { type: "text", value: st.compatible_base_url, placeholder: "http://localhost:11434/v1" });
+      url.addEventListener("change", () => saveSettings({ compatible_base_url: url.value.trim() }));
+      panel.append(el("div", { class: "field" }, el("span", { class: "label", text: "Base URL (OpenRouter, Ollama, LM Studio…)" }), url));
+    }
+    panel.append(el("div", { class: "field" }, el("span", { class: "label", text: "Model" }), el("div", { class: "row" }, modelSel, load), modelMsg));
+    panels.append(panel);
+    if (hasKey(p.id) || !p.needsKey) loadModels();
+  }
+  $("language").value = st.language;
+  $("share-listing").checked = st.share_folder_listing;
+}
+
+async function loadModels() {
+  const st = settingsView.settings;
+  const sel = $("model-select"), msg = $("model-msg");
+  if (!sel) return;
+  msg.className = "muted small"; msg.textContent = "Loading models…";
+  try {
+    const models = await invoke("list_models", { provider: st.active });
+    const key = `${st.active}_model`;
+    let current = st[key];
+    if (!current && models.length) {
+      // Anthropic lists newest first; for others prefer a "mini" model as a cheap default.
+      current = (st.active === "anthropic" ? models.find((m) => m.id === "claude-opus-5-5") || models[0] : models.find((m) => /mini/.test(m.id)) || models[0]).id;
+      await saveSettings({ [key]: current });
+    }
+    sel.replaceChildren(...models.map((m) => el("option", { value: m.id, text: m.name === m.id ? m.id : `${m.name} (${m.id})` })));
+    if (current && !models.some((m) => m.id === current)) sel.prepend(el("option", { value: current, text: current }));
+    sel.value = current || "";
+    msg.textContent = `${models.length} models available`;
+  } catch (e) {
+    msg.className = "err-text"; msg.textContent = String(e);
+  }
+}
+
+$("open-settings").addEventListener("click", openSettings);
+$("language").addEventListener("change", () => saveSettings({ language: $("language").value }));
+$("share-listing").addEventListener("change", () => saveSettings({ share_folder_listing: $("share-listing").checked }));
+
+// ───────────────────────── explain ─────────────────────────
+const explained = new Map();
+const VERDICT = {
+  safe: { icon: "✅", text: "Looks safe to delete" },
+  caution: { icon: "⚠️", text: "Delete with care" },
+  keep: { icon: "🛑", text: "Better keep it" },
+};
+
+async function explainItem(path, hint = {}) {
+  const name = path === "/" ? "Macintosh HD" : path.split("/").filter(Boolean).pop();
+  $("ex-title").textContent = name;
+  $("ex-path").textContent = tilde(path);
+  const body = $("ex-body");
+  const dlg = $("explain");
+  if (!dlg.open) dlg.showModal();
+  if (explained.has(path)) { renderExplanation(explained.get(path)); return; }
+  body.replaceChildren(el("div", { class: "loading" }, el("span", { class: "spinner" }), el("span", { text: "Asking the AI where this comes from…" })));
+  try {
+    const ex = await invoke("explain", { path, hint });
+    explained.set(path, ex);
+    if ($("ex-path").textContent === tilde(path)) renderExplanation(ex);
+  } catch (e) {
+    const msg = String(e);
+    const kids = [el("p", { class: "err-text", text: msg })];
+    if (/Settings|API key|model/i.test(msg)) kids.push(el("button", { class: "btn primary", type: "button", text: "Open Settings", onclick: () => { dlg.close(); openSettings(); } }));
+    body.replaceChildren(...kids);
+  }
+}
+
+function renderExplanation(ex) {
+  const a = ex.answer;
+  const v = VERDICT[a.verdict] || VERDICT.caution;
+  const sec = (title, text) => text ? el("div", { class: "ex-sec" }, el("h4", { text: title }), el("p", { text })) : null;
+  $("ex-body").replaceChildren(
+    el("div", { class: `verdict ${VERDICT[a.verdict] ? a.verdict : "caution"}` }, el("span", { class: "v-icon", text: v.icon }), el("span", { text: `${v.text} · confidence: ${a.confidence}` })),
+    sec("What it is", a.what),
+    sec("Where it comes from", a.origin),
+    sec("If you delete it", a.impact),
+    sec("How to remove it", a.how_to_remove),
+    el("div", { class: "ex-foot muted small" },
+      el("div", { text: `Answered by ${ex.provider} · ${ex.model}. AI answers can be wrong; when in doubt, keep it or move it to the Trash first.` }),
+      el("details", {}, el("summary", { text: "What was sent" }), el("pre", { text: JSON.stringify(ex.sent, null, 2) }))),
+  );
+}
+
+$("ex-close").addEventListener("click", () => $("explain").close());
 $("fda-open").addEventListener("click", openFda);
 $("fda-restart").addEventListener("click", () => invoke("restart"));
 let resizeT;
@@ -482,9 +669,13 @@ function mockInvoke(cmd) {
   const delay = (v, ms) => new Promise((r) => setTimeout(() => r(v), ms));
   switch (cmd) {
     case "get_disk_status": return delay(status, 50);
-    case "get_overview": return delay({ elapsed_secs: 19, totals: { alloc: 458 * GB, files: 3561390 }, reconciliation: null, privacy_protected: 518, other_owner: 148, tree, largest_files: [{ path: "/Users/demo/Library/Containers/com.docker.docker/Data/vms/0/data/Docker.raw", bytes: 56.9 * GB }] }, 300);
+    case "get_overview": return delay({ elapsed_secs: 19, totals: { alloc: 458 * GB, files: 3561390 }, reconciliation: null, privacy_protected: 518, other_owner: 148, tree, largest_files: [{ path: "/Users/demo/Library/Containers/com.docker.docker/Data/vms/0/data/Docker.raw", bytes: 56.9 * GB, modified: 1790000000 }, { path: "/System/Library/AssetsV2/x.dmg", bytes: 8.8 * GB, modified: 1700000000 }], oldest_files: [{ path: "/Users/demo/Downloads/old-installer.dmg", bytes: 0.9 * GB, modified: 1600000000 }, { path: "/Applications/Xcode.app/Contents/x", bytes: 0.2 * GB, modified: 1500000000 }] }, 300);
     case "get_suggestions": return delay(report, 300);
     case "check_full_disk_access": return delay({ status: "denied" }, 50);
+    case "get_settings": case "save_settings": case "set_api_key":
+      return delay({ settings: { active: "anthropic", anthropic_model: "claude-opus-5-5", openai_model: "", compatible_base_url: "http://localhost:11434/v1", compatible_model: "", language: "Spanish", share_folder_listing: true }, has_key: [["anthropic", true], ["openai", false], ["compatible", false]] }, 50);
+    case "list_models": return delay([{ id: "claude-opus-5-5", name: "Claude Opus 5.5" }, { id: "claude-sonnet-5-5", name: "Claude Sonnet 5.5" }], 200);
+    case "explain": return delay({ provider: "Anthropic", model: "claude-opus-5-5", answer: { what: "Log files written by the C# Dev Kit extension of VS Code.", origin: "VS Code creates one folder per session; the C# Dev Kit extension writes a detailed trace log there.", verdict: "safe", impact: "Nothing breaks: logs are only diagnostic and new ones are written next session.", how_to_remove: "Quit VS Code and move the folder to the Trash; lower the extension's log level to stop the growth.", confidence: "high" }, sent: { path: "~/Library/Application Support/Code/logs", kind: "folder" } }, 600);
     default: return delay(null, 10);
   }
 }

@@ -353,10 +353,10 @@ impl Cleaner {
         if self.project.is_none() && self.measure.paths.is_empty() {
             err("[measure].paths is required (or a [project] section)".into());
         }
-        if let Some(m) = &self.measure.min_item_bytes {
-            if parse_size(m).is_err() {
-                err(format!("invalid min_item_bytes `{m}`"));
-            }
+        if let Some(m) = &self.measure.min_item_bytes
+            && parse_size(m).is_err()
+        {
+            err(format!("invalid min_item_bytes `{m}`"));
         }
         let mut patterns: Vec<&String> = self.measure.paths.iter().collect();
         patterns.extend(&self.detect.any_path_exists);
@@ -367,10 +367,10 @@ impl Cleaner {
                         err("manual cleaners may only have `manual` actions".into());
                     }
                     patterns.extend(&r.paths);
-                    if let Some(d) = &r.older_than {
-                        if parse_duration(d).is_err() {
-                            err(format!("invalid older_than `{d}`"));
-                        }
+                    if let Some(d) = &r.older_than
+                        && parse_duration(d).is_err()
+                    {
+                        err(format!("invalid older_than `{d}`"));
                     }
                 }
                 Action::Command { argv, timeout, .. } => {
@@ -388,10 +388,10 @@ impl Cleaner {
                             }
                         }
                     }
-                    if let Some(t) = timeout {
-                        if parse_duration(t).is_err() {
-                            err(format!("invalid timeout `{t}`"));
-                        }
+                    if let Some(t) = timeout
+                        && parse_duration(t).is_err()
+                    {
+                        err(format!("invalid timeout `{t}`"));
                     }
                 }
                 Action::Manual { .. } => {}
@@ -407,10 +407,10 @@ impl Cleaner {
             if p.markers.is_empty() || p.artifacts.is_empty() {
                 err("[project] needs markers and artifacts".into());
             }
-            if let Some(d) = &p.stale_after {
-                if parse_duration(d).is_err() {
-                    err(format!("invalid stale_after `{d}`"));
-                }
+            if let Some(d) = &p.stale_after
+                && parse_duration(d).is_err()
+            {
+                err(format!("invalid stale_after `{d}`"));
             }
             for a in &p.artifacts {
                 if a.contains('/') || a == "." || a == ".." || a.is_empty() {

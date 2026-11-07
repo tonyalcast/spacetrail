@@ -140,15 +140,14 @@ pub fn run(
 #[must_use]
 pub fn advice(disk: &DiskStatus, out: &[Suggestion]) -> Vec<String> {
     let mut a = Vec::new();
-    if let Some(c) = &disk.container {
-        if let Some(vm) = c.volumes.iter().find(|v| v.role == VolumeRole::Vm) {
-            if vm.consumed >= 8_000_000_000 {
-                a.push(format!(
+    if let Some(c) = &disk.container
+        && let Some(vm) = c.volumes.iter().find(|v| v.role == VolumeRole::Vm)
+        && vm.consumed >= 8_000_000_000
+    {
+        a.push(format!(
                     "Swap uses {} because memory is under pressure. It is not deletable; it shrinks when you quit memory-hungry apps (Docker, local LLMs, many browser tabs) or restart. Lowering Docker Desktop's memory limit helps most.",
                     human(vm.consumed)
                 ));
-            }
-        }
     }
     if disk.full_disk_access != FdaStatus::Granted {
         a.push(
