@@ -139,6 +139,8 @@ fn unreadable_directories_are_reported_not_zeroed() {
     assert_eq!(res.unreadable.len(), 1);
     assert_eq!(res.unreadable[0].path, secret);
     assert_eq!(res.unreadable[0].kind, std::io::ErrorKind::PermissionDenied);
+    // Plain Unix permissions → EACCES, not a privacy (TCC) denial.
+    assert!(!res.unreadable[0].is_privacy_protected());
     let id = res.tree.find(&secret).unwrap();
     assert_eq!(res.tree.get(id).state, DirState::Unreadable);
     assert_eq!(res.tree.root().total.unreadable_dirs, 1);

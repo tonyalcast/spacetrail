@@ -3,11 +3,13 @@
 
 use std::path::PathBuf;
 
+use serde::Serialize;
+
 /// Capacity figures for one mounted volume.
 ///
 /// On APFS these numbers legitimately disagree with each other, which
 /// confuses users; the UI shows them side by side with explanations.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
 pub struct VolumeStats {
     /// Size of the volume (on APFS: of the whole container).
     pub total: u64,
@@ -34,7 +36,8 @@ impl VolumeStats {
 }
 
 /// Role of a volume inside an APFS container.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum VolumeRole {
     /// Sealed, read-only macOS system volume.
     System,
@@ -53,6 +56,20 @@ pub enum VolumeRole {
 }
 
 impl VolumeRole {
+    /// Short label, e.g. "VM (swap)".
+    #[must_use]
+    pub fn label(&self) -> &str {
+        match self {
+            Self::System => "System",
+            Self::Data => "Data",
+            Self::Vm => "VM (swap)",
+            Self::Preboot => "Preboot",
+            Self::Recovery => "Recovery",
+            Self::Update => "Update",
+            Self::Other(name) => name,
+        }
+    }
+
     /// Short human description of what lives on a volume with this role.
     #[must_use]
     pub fn explanation(&self) -> &str {
@@ -69,7 +86,7 @@ impl VolumeRole {
 }
 
 /// One volume of a container and the space it consumes.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct VolumeUsage {
     /// Volume name (e.g. "Macintosh HD - Data").
     pub name: String,
@@ -84,7 +101,7 @@ pub struct VolumeUsage {
 }
 
 /// An APFS container: one pool of space shared by several volumes.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Container {
     /// Container device (e.g. `disk3`).
     pub device: String,
@@ -118,9 +135,45 @@ impl Container {
     }
 }
 
+/// How the data volume's consumed space compares to what a scan measured.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct Reconciliation {
+    /// Bytes the data volume consumes according to APFS.
+    pub data_volume: u64,
+    /// Bytes the scan measured.
+    pub measured: u64,
+    /// Used but not measured: unreadable folders, other users' files, APFS
+    /// metadata and snapshot-held blocks.
+    pub unattributed: u64,
+    /// Measured but not used: blocks shared by APFS clones are counted once
+    /// per clone by the scan.
+    pub overcounted: u64,
+}
+
+impl Reconciliation {
+    /// Compares the data volume's consumption with a scan's measurement.
+    #[must_use]
+    pub fn new(data_volume: u64, measured: u64) -> Self {
+        Self {
+            data_volume,
+            measured,
+            unattributed: data_volume.saturating_sub(measured),
+            overcounted: measured.saturating_sub(data_volume),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reconciliation() {
+        let r = Reconciliation::new(100, 70);
+        assert_eq!((r.unattributed, r.overcounted), (30, 0));
+        let r = Reconciliation::new(100, 120);
+        assert_eq!((r.unattributed, r.overcounted), (0, 20));
+    }
 
     #[test]
     fn container_math() {

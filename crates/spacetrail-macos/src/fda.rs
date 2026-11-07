@@ -8,7 +8,8 @@ use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
 /// Result of the Full Disk Access probe.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
 pub enum FdaStatus {
     /// A protected location was readable.
     Granted,

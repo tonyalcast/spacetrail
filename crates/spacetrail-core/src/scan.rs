@@ -89,6 +89,19 @@ pub struct Unreadable {
     pub path: PathBuf,
     /// Error kind returned by `readdir` (usually `PermissionDenied`).
     pub kind: ErrorKind,
+    /// Raw OS error. On macOS `EPERM` (1) means a privacy (TCC) denial that
+    /// Full Disk Access lifts; `EACCES` (13) means ordinary Unix permissions
+    /// (owned by root or another user).
+    pub errno: Option<i32>,
+}
+
+impl Unreadable {
+    /// `true` if the denial comes from macOS privacy protection (TCC), which
+    /// granting Full Disk Access would lift.
+    #[must_use]
+    pub fn is_privacy_protected(&self) -> bool {
+        self.errno == Some(1)
+    }
 }
 
 /// Outcome of a scan.
@@ -295,6 +308,7 @@ fn walk_dir(shared: &Shared<'_>, path: PathBuf, name: OsString, meta: &Metadata)
                     .push(Unreadable {
                         path,
                         kind: e.kind(),
+                        errno: e.raw_os_error(),
                     });
             } else {
                 node.state = DirState::Failed;

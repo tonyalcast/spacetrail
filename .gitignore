@@ -4,3 +4,6 @@
 *.snap.new
 .DS_Store
 /sandbox
+
+# Real-machine scan reports contain personal/client paths: keep local
+/docs/reports/

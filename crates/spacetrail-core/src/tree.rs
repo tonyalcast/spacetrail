@@ -26,7 +26,7 @@ impl NodeId {
 
 /// Sizes and counts for a directory, either its own direct content or the
 /// recursive total.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize)]
 pub struct Stats {
     /// Allocated bytes on disk (`st_blocks * 512`), hard links counted once.
     pub alloc: u64,
@@ -63,7 +63,8 @@ impl Stats {
 }
 
 /// Why a directory's content is not (fully) known.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum DirState {
     /// Fully scanned.
     #[default]
