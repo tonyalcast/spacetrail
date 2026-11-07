@@ -47,7 +47,7 @@ Findings from experiments on real macOS behavior. Every entry: date, machine, wh
 - [ ] S3 (Phase 1): Volume capacity — `NSURLVolumeAvailableCapacityForImportantUsageKey` vs `statfs` vs `diskutil`; how to get purgeable.
 - [ ] S4 (Phase 1): Walker throughput — `readdir`+`lstat` vs `getattrlistbulk` on ~1M files.
 - [ ] S5 (Phase 3): FSEvents without root — are events for TCC-protected paths delivered? `sinceWhen` replay after reboot? Event-ID stability per volume UUID.
-- [ ] S6 (Phase 3): TCC identity of the daemon binary when unsigned vs signed; does FDA survive a `brew upgrade` (Cellar path changes)?
+- [x] S6: TCC identity of a signed app across rebuilds (see 2026-11-05 entry). Still open: `brew upgrade` path changes for the CLI/daemon.
 - [ ] S7 (Phase 4): `proc_pid_rusage(RUSAGE_INFO_V4)` for own-uid processes, including `com.apple.Virtualization.VirtualMachine` (Docker's VM).
 - [ ] S8 (Phase 2): `NSFileManager trashItemAtURL:resultingItemURL:` — returned URL is stable for undo; behavior on external volumes / name collisions.
 
@@ -82,3 +82,20 @@ Per-volume usage is only available from `diskutil apfs list -plist` (no root nee
 **S1 — dataless.** Inconclusive without FDA: `~/Library/Mobile Documents` itself is TCC-protected, and `~/Library/CloudStorage` is empty on this machine. `setiopolicy_np(…MATERIALIZE_DATALESS_FILES_OFF)` succeeds (unit test). Re-run S1 after FDA is granted.
 
 **S4 — `getattrlistbulk`:** deferred. The plain walker already does ~1 M real files in ~10 s (S2), well within budget.
+
+## 2026-11-05 — S6: a signed .app owns its permissions (author's machine, macOS 26)
+
+Setup: a minimal app bundle `target/spike/Spacetrail.app` (`CFBundleIdentifier = io.github.tonyalcast.spacetrail`, `LSUIElement`) wrapping the `fda_probe` example. It's signed with a **self-signed "Code Signing" certificate** `spacetrail-dev`, created in Keychain Access (login keychain, 10-year validity, trusted for code signing), using `codesign --force --options runtime --sign spacetrail-dev --identifier io.github.tonyalcast.spacetrail`, and launched with `open -W` (LaunchServices, so the app is its own responsible process).
+
+| Build | Binary hash | Result |
+|---|---|---|
+| 1 | 87dac4… | FDA `Denied` (expected) |
+| 2 | 158f30… | Read `~/Documents`, `~/Desktop`, `~/Downloads` OK; FDA `Denied`. After this run **spacetrail appeared in System Settings → Full Disk Access on its own (toggle off)**; the author switched it on. |
+| 3 | 84dfd5… (different code) | **FDA `Granted`**: the grant survives rebuilds |
+| CLI from Terminal | — | FDA still `Denied`: the grant belongs only to the app |
+
+Findings:
+1. With a stable signing identity, the designated requirement is `identifier "io.github.tonyalcast.spacetrail" and certificate leaf = H"…"`. TCC keys the grant on it, so **rebuilds keep Full Disk Access**. An ad-hoc signature would lose it on every build.
+2. **No API can prompt for Full Disk Access.** But once the app *tries* to read an FDA-protected location (e.g. `TCC.db`), macOS registers it in the Full Disk Access list with the toggle off, so the user only has to flip a switch. The app's onboarding should do exactly that: probe → open `x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_AllFiles` → poll the probe until granted.
+3. Folder consents (Documents/Desktop/Downloads) were readable on first launch. Whether macOS showed its "would like to access…" prompts is unconfirmed; re-test on a fresh bundle id if the onboarding needs to rely on them.
+4. Consequence for distribution: the desktop app must ship with a stable signature (self-signed for local builds, Developer ID for releases); grants do not carry over between differently-signed builds.
