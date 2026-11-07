@@ -1,0 +1,16 @@
+schema = 1
+id = "go-build-cache"
+version = "1.0.0"
+name = "Go build cache"
+description = "Compiled package objects cached by the Go toolchain."
+risk = "safe"
+risk_reason = "Rebuilt automatically."
+category = "developer/go"
+regenerates = "Next builds are slower once."
+
+[measure]
+paths = ["${GOCACHE:-~/Library/Caches/go-build}"]
+
+[[action]]
+type = "command"
+argv = ["go", "clean", "-cache"]

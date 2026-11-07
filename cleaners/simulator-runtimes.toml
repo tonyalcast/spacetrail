@@ -1,0 +1,22 @@
+schema = 1
+id = "simulator-runtimes"
+version = "1.0.0"
+name = "Simulator runtimes"
+description = "iOS/watchOS/visionOS simulator runtimes installed by Xcode (several GB each)."
+risk = "manual"
+risk_reason = "Needed to run simulators of that OS version; re-download is large."
+category = "developer/xcode"
+
+[measure]
+paths = ["/System/Library/AssetsV2/com_apple_MobileAsset_iOSSimulatorRuntime", "/Library/Developer/CoreSimulator/Volumes/*", "/Library/Developer/CoreSimulator/Caches/*"]
+group_by = "cleaner"
+
+[[action]]
+type = "manual"
+instructions = """
+List runtimes and delete the ones you no longer test on (Xcode → Settings → Components also works).
+"""
+suggested_commands = [
+  ["xcrun", "simctl", "runtime", "list"],
+  ["xcrun", "simctl", "runtime", "delete", "<runtime-id>"],
+]

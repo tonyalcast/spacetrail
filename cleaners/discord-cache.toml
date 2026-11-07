@@ -1,0 +1,18 @@
+schema = 1
+id = "discord-cache"
+version = "1.0.0"
+name = "Discord cache"
+description = "Electron caches of the app (images, scripts, service workers)."
+risk = "review"
+risk_reason = "Re-downloaded as you use the app; messages stay on the server."
+category = "apps/chat"
+regenerates = "As you use the app."
+
+[measure]
+paths = ["~/Library/Application Support/discord/Cache", "~/Library/Application Support/discord/Code Cache", "~/Library/Application Support/discord/GPUCache", "~/Library/Application Support/discord/Service Worker/CacheStorage"]
+
+[preconditions]
+process_not_running = ["Discord"]
+
+[[action]]
+type = "delete_contents"

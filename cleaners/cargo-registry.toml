@@ -1,0 +1,15 @@
+schema = 1
+id = "cargo-registry"
+version = "1.0.0"
+name = "Cargo registry and git caches"
+description = "Crate sources and git checkouts downloaded by Cargo."
+risk = "review"
+risk_reason = "Re-downloaded on the next build of each project (network, time)."
+category = "developer/rust"
+regenerates = "On the next `cargo build`."
+
+[measure]
+paths = ["${CARGO_HOME:-~/.cargo}/registry/cache", "${CARGO_HOME:-~/.cargo}/registry/src", "${CARGO_HOME:-~/.cargo}/git/checkouts"]
+
+[[action]]
+type = "delete_contents"

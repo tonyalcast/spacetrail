@@ -46,6 +46,9 @@ pub struct Stats {
     pub hardlink_dupes: u64,
     /// Entries that vanished or failed to stat during the scan.
     pub errors: u64,
+    /// Newest modification time (Unix seconds) of the directory itself or
+    /// anything below it; 0 if unknown. Used to detect abandoned data.
+    pub newest_mtime: i64,
 }
 
 impl Stats {
@@ -59,6 +62,7 @@ impl Stats {
         self.unreadable_dirs += o.unreadable_dirs;
         self.hardlink_dupes += o.hardlink_dupes;
         self.errors += o.errors;
+        self.newest_mtime = self.newest_mtime.max(o.newest_mtime);
     }
 }
 

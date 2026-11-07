@@ -1,0 +1,17 @@
+schema = 1
+id = "downloads-installers"
+version = "1.0.0"
+name = "Old installers in Downloads"
+description = "Disk images, packages and archives in Downloads older than 30 days."
+risk = "review"
+risk_reason = "You may want to keep an installer or archive."
+category = "system/downloads"
+regenerates = "Can be downloaded again."
+
+[measure]
+paths = ["~/Downloads/*.dmg", "~/Downloads/*.pkg", "~/Downloads/*.iso", "~/Downloads/*.zip", "~/Downloads/*.xip"]
+
+[[action]]
+type = "trash"
+older_than = "30d"
+age_basis = "mtime"

@@ -1,0 +1,16 @@
+schema = 1
+id = "yarn-cache"
+version = "1.0.0"
+name = "Yarn cache"
+description = "Packages downloaded by Yarn (classic)."
+risk = "safe"
+risk_reason = "Re-downloaded automatically on the next install."
+category = "developer/js"
+regenerates = "On the next `yarn install` (needs network)."
+
+[measure]
+paths = ["~/Library/Caches/Yarn"]
+
+[[action]]
+type = "command"
+argv = ["yarn", "cache", "clean"]

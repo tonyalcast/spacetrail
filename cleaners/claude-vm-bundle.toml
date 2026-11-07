@@ -1,0 +1,18 @@
+schema = 1
+id = "claude-vm-bundle"
+version = "1.0.0"
+name = "Claude desktop VM image"
+description = "Virtual machine image used by the Claude desktop app for sandboxed work."
+risk = "manual"
+risk_reason = "Managed by the Claude app; deleting it by hand may break features."
+category = "apps/ai"
+
+[measure]
+paths = ["~/Library/Application Support/Claude/vm_bundles"]
+group_by = "cleaner"
+
+[[action]]
+type = "manual"
+instructions = """
+Managed by the Claude app. If you don't use its VM-based features, check the app's settings or reinstall to reset it.
+"""

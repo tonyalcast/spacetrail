@@ -1,0 +1,16 @@
+schema = 1
+id = "pip-cache"
+version = "1.0.0"
+name = "pip cache"
+description = "Wheels and HTTP responses cached by pip."
+risk = "safe"
+risk_reason = "Re-downloaded automatically."
+category = "developer/python"
+regenerates = "On the next `pip install`."
+
+[measure]
+paths = ["~/Library/Caches/pip"]
+
+[[action]]
+type = "command"
+argv = ["pip3", "cache", "purge"]

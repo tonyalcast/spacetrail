@@ -1,0 +1,15 @@
+schema = 1
+id = "raspberry-pi-imager-cache"
+version = "1.0.0"
+name = "Raspberry Pi Imager download cache"
+description = "The last OS image downloaded by Raspberry Pi Imager."
+risk = "safe"
+risk_reason = "A download cache."
+category = "system/caches"
+regenerates = "Downloaded again when you flash a card."
+
+[measure]
+paths = ["~/Library/Caches/Raspberry Pi"]
+
+[[action]]
+type = "delete_contents"

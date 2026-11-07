@@ -1,0 +1,18 @@
+schema = 1
+id = "gradle-caches"
+version = "1.0.0"
+name = "Gradle caches and wrappers"
+description = "Dependencies, build caches and Gradle distributions."
+risk = "review"
+risk_reason = "Android/JVM builds re-download dependencies and Gradle versions."
+category = "developer/jvm"
+regenerates = "On the next Gradle build (network, slow first build)."
+
+[measure]
+paths = ["${GRADLE_USER_HOME:-~/.gradle}/caches", "${GRADLE_USER_HOME:-~/.gradle}/wrapper/dists"]
+
+[preconditions]
+process_not_running = ["Android Studio"]
+
+[[action]]
+type = "delete_contents"

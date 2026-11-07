@@ -65,7 +65,9 @@ All listed conditions are **OR**-ed within a key and **AND**-ed across keys. If 
 - `${VAR}` / `${VAR:-default}` → environment variable with fallback, e.g. `${GRADLE_USER_HOME:-~/.gradle}`. Only variables in an allow-list are expanded (`HOME`, `TMPDIR`, `XDG_*`, `GRADLE_USER_HOME`, `CARGO_HOME`, `RUSTUP_HOME`, `GOPATH`, `GOCACHE`, `GOMODCACHE`, `NUGET_PACKAGES`, `OLLAMA_MODELS`, `HF_HOME`, `npm_config_cache`, `PNPM_HOME`, `BUN_INSTALL`, `CONDA_PREFIX`, `PUB_CACHE`, …). The list lives in code and is reviewed.
 - Globs: `*`, `?`, `[abc]`, `**` (recursive, **only allowed in `exclude`** and in `[project]` roots) via `globset`. Matching is case-insensitive (APFS default).
 - A pattern must have a non-wildcard prefix of at least 2 components below `~` or `/` (e.g. `~/Library/Caches/*` ✔, `~/*` ✘). That prefix is the cleaner's **declared root**, used for the containment check (ARCHITECTURE §8).
-- Paths that hit the deny-list are rejected **at validation time**.
+- A glob component with a literal part (e.g. `~/Downloads/*.dmg`) needs only one literal component before it.
+- The literal prefix (declared root) is canonicalized once (`/var` → `/private/var`); below it, matching never resolves a symlink.
+- Paths of `safe`/`review` cleaners that hit the deny-list are rejected **at validation time**. Measure-only paths of `manual` cleaners may point at protected locations (e.g. simulator runtimes under `/System/Library/AssetsV2`), since they are never deleted.
 
 ## 6. `[preconditions]`
 

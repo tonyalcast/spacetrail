@@ -1,0 +1,16 @@
+schema = 1
+id = "conda-pkgs"
+version = "1.0.0"
+name = "conda package cache"
+description = "Downloaded package tarballs and extracted packages kept by conda."
+risk = "safe"
+risk_reason = "Installed environments do not depend on the cache."
+category = "developer/python"
+regenerates = "Packages are re-downloaded when creating new environments."
+
+[measure]
+paths = ["/opt/miniconda3/pkgs", "/opt/anaconda3/pkgs", "~/miniconda3/pkgs", "~/anaconda3/pkgs", "~/opt/miniconda3/pkgs"]
+
+[[action]]
+type = "command"
+argv = ["conda", "clean", "--all", "--yes"]

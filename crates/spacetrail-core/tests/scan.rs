@@ -74,6 +74,22 @@ fn totals_match_reference_and_counts_are_right() {
 }
 
 #[test]
+fn newest_mtime_propagates_to_ancestors() {
+    let tmp = tempfile::tempdir().unwrap();
+    let r = tmp.path();
+    write(&r.join("old/a.bin"), 10);
+    write(&r.join("new/deep/b.bin"), 10);
+    let newest = fs::symlink_metadata(r.join("new/deep/b.bin"))
+        .unwrap()
+        .mtime();
+    let res = run(r);
+    assert!(res.tree.root().total.newest_mtime >= newest);
+    let new = res.tree.find(&r.join("new")).unwrap();
+    assert!(res.tree.get(new).total.newest_mtime >= newest);
+    assert!(res.tree.get(new).own.newest_mtime > 0);
+}
+
+#[test]
 fn hard_links_are_counted_once() {
     let tmp = tempfile::tempdir().unwrap();
     let r = tmp.path();

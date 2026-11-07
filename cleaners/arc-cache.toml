@@ -1,0 +1,18 @@
+schema = 1
+id = "arc-cache"
+version = "1.0.0"
+name = "Arc cache"
+description = "Web cache of the browser (pages, images, scripts)."
+risk = "review"
+risk_reason = "Pages load slower until the cache refills; nothing personal is lost."
+category = "apps/browsers"
+regenerates = "As you browse."
+
+[measure]
+paths = ["~/Library/Caches/Arc"]
+
+[preconditions]
+process_not_running = ["Arc"]
+
+[[action]]
+type = "delete_contents"

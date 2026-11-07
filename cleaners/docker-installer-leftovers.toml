@@ -1,0 +1,18 @@
+schema = 1
+id = "docker-installer-leftovers"
+version = "1.0.0"
+name = "Docker installer leftovers"
+description = "Files left by interrupted or completed Docker Desktop updates."
+risk = "review"
+risk_reason = "Docker Desktop is installed separately; these are update downloads."
+category = "containers/docker"
+regenerates = "Docker downloads updates again when needed."
+
+[measure]
+paths = ["~/Library/Application Support/com.docker.install/in_progress", "${TMPDIR}DockerDesktopUpdates"]
+
+[preconditions]
+process_not_running = ["Docker"]
+
+[[action]]
+type = "delete_contents"

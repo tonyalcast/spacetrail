@@ -1,0 +1,21 @@
+schema = 1
+id = "macos-updates-staged"
+version = "1.0.0"
+name = "Downloaded macOS / CLT updates"
+description = "Update packages downloaded by Software Update."
+risk = "manual"
+risk_reason = "Installed by Software Update; deleting them may break a pending install."
+category = "system/updates"
+
+[measure]
+paths = ["/Library/Updates/*"]
+group_by = "cleaner"
+
+[[action]]
+type = "manual"
+instructions = """
+Install or dismiss pending updates in System Settings → General → Software Update; the packages are removed afterwards.
+"""
+suggested_commands = [
+  ["softwareupdate", "--list"],
+]

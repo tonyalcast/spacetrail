@@ -3,6 +3,7 @@
 pub(crate) mod doctor;
 pub(crate) mod scan;
 pub(crate) mod status;
+pub(crate) mod suggest;
 
 use std::io::Write;
 use std::path::{Path, PathBuf};

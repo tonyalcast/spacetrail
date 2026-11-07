@@ -8,6 +8,7 @@ mod render;
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
+use spacetrail_cleaners::Risk;
 use spacetrail_core::UnitSystem;
 
 use commands::Ctx;
@@ -50,8 +51,36 @@ enum Command {
         #[arg(long, default_value_t = 1.0)]
         min_pct: f64,
     },
+    /// What you can delete to free space, grouped by risk, with how-to.
+    Suggest {
+        /// Only these risk classes (repeatable): safe, review, manual.
+        #[arg(long = "risk", value_parser = parse_risk)]
+        risks: Vec<Risk>,
+        /// Hide suggestions smaller than this (e.g. 500MB).
+        #[arg(long, default_value = "100MB", value_parser = parse_bytes)]
+        min: u64,
+        /// Items listed per suggestion.
+        #[arg(long, default_value_t = 3)]
+        items: usize,
+        /// Code folders to search for projects and worktrees (repeatable).
+        #[arg(long = "root")]
+        roots: Vec<PathBuf>,
+    },
     /// Check permissions (Full Disk Access) and environment.
     Doctor,
+}
+
+fn parse_risk(s: &str) -> Result<Risk, String> {
+    match s {
+        "safe" => Ok(Risk::Safe),
+        "review" => Ok(Risk::Review),
+        "manual" => Ok(Risk::Manual),
+        _ => Err("expected safe, review or manual".into()),
+    }
+}
+
+fn parse_bytes(s: &str) -> Result<u64, String> {
+    spacetrail_core::parse_size(s).map_err(|e| e.to_string())
 }
 
 fn main() -> anyhow::Result<()> {
@@ -93,6 +122,20 @@ fn main() -> anyhow::Result<()> {
                 depth,
                 min_pct,
                 files,
+            },
+        ),
+        Some(Command::Suggest {
+            risks,
+            min,
+            items,
+            roots,
+        }) => commands::suggest::run(
+            &ctx,
+            &commands::suggest::Options {
+                risks,
+                min_bytes: min,
+                items,
+                roots,
             },
         ),
         Some(Command::Doctor) => commands::doctor::run(&ctx, &dataless_guard),

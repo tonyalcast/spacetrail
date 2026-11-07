@@ -1,0 +1,21 @@
+schema = 1
+id = "rustup-toolchains"
+version = "1.0.0"
+name = "Rust toolchains"
+description = "Rust toolchains installed with rustup (~1 GB each)."
+risk = "manual"
+risk_reason = "Projects may pin a toolchain."
+category = "developer/rust"
+
+[measure]
+paths = ["${RUSTUP_HOME:-~/.rustup}/toolchains/*"]
+
+[[action]]
+type = "manual"
+instructions = """
+Remove toolchains you no longer use.
+"""
+suggested_commands = [
+  ["rustup", "toolchain", "list"],
+  ["rustup", "toolchain", "uninstall", "<toolchain>"],
+]

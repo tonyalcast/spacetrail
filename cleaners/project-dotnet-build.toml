@@ -1,0 +1,17 @@
+schema = 1
+id = "project-dotnet-build"
+version = "1.0.0"
+name = "Stale .NET bin/obj folders"
+description = "Build output of inactive .NET projects."
+risk = "review"
+risk_reason = "Rebuilt by `dotnet build`."
+category = "developer/projects"
+regenerates = "`dotnet build` in the project."
+
+[project]
+markers = ["*.csproj", "*.fsproj", "*.vbproj"]
+artifacts = ["bin", "obj"]
+stale_after = "60d"
+
+[[action]]
+type = "trash"

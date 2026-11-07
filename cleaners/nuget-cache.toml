@@ -1,0 +1,16 @@
+schema = 1
+id = "nuget-cache"
+version = "1.0.0"
+name = "NuGet caches"
+description = ".NET packages and HTTP caches kept by NuGet."
+risk = "review"
+risk_reason = "Every .NET project re-downloads its packages on the next restore."
+category = "developer/dotnet"
+regenerates = "On the next `dotnet restore` (network)."
+
+[measure]
+paths = ["${NUGET_PACKAGES:-~/.nuget/packages}", "~/.local/share/NuGet/http-cache", "~/.local/share/NuGet/v3-cache"]
+
+[[action]]
+type = "command"
+argv = ["dotnet", "nuget", "locals", "all", "--clear"]

@@ -1,0 +1,17 @@
+schema = 1
+id = "project-ios-pods"
+version = "1.0.0"
+name = "Stale CocoaPods Pods"
+description = "Installed pods of inactive iOS projects."
+risk = "review"
+risk_reason = "Reinstalled by `pod install` (network)."
+category = "developer/projects"
+regenerates = "`pod install` in the project."
+
+[project]
+markers = ["Podfile"]
+artifacts = ["Pods"]
+stale_after = "60d"
+
+[[action]]
+type = "trash"

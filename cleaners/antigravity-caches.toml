@@ -1,0 +1,18 @@
+schema = 1
+id = "antigravity-caches"
+version = "1.0.0"
+name = "Antigravity caches"
+description = "Chromium/Electron caches of Antigravity: compiled code, GPU shaders, HTTP cache and downloaded extension packages."
+risk = "safe"
+risk_reason = "Pure caches; the editor rebuilds them on next start."
+category = "developer/editors"
+regenerates = "On next Antigravity start (first start slightly slower)."
+
+[measure]
+paths = ["~/Library/Application Support/Antigravity/Cache", "~/Library/Application Support/Antigravity/CachedData", "~/Library/Application Support/Antigravity/Code Cache", "~/Library/Application Support/Antigravity/GPUCache", "~/Library/Application Support/Antigravity/CachedExtensionVSIXs", "~/Library/Application Support/Antigravity/CachedProfilesData", "~/Library/Application Support/Antigravity/Service Worker/CacheStorage"]
+
+[preconditions]
+process_not_running = ["Antigravity"]
+
+[[action]]
+type = "delete_contents"

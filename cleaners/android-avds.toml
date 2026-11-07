@@ -1,0 +1,17 @@
+schema = 1
+id = "android-avds"
+version = "1.0.0"
+name = "Android emulators (AVDs)"
+description = "Virtual devices with their disk images and snapshots."
+risk = "manual"
+risk_reason = "They contain installed apps and emulator state."
+category = "developer/android"
+
+[measure]
+paths = ["~/.android/avd/*.avd"]
+
+[[action]]
+type = "manual"
+instructions = """
+Android Studio → Device Manager: delete emulators you no longer use, or wipe their data.
+"""

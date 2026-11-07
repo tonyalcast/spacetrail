@@ -58,6 +58,8 @@ The author's disk is at 93 %, so the "what is eating my disk" answer is moved **
 
 ## Phase 2 — Cleaners & safe execution
 
+> **Reordered 2026-11-05:** with the author's disk at 99 %, the read-only half of Phase 2 (schema, loader, validator, planner, catalog and `spacetrail suggest`) was delivered right after M1.3, before M1.4. Still pending in Phase 2: the executor (`clean --apply`), journal/undo, per-cleaner fixtures in CI, TUI Cleanup/History and `report --html`.
+
 ### M2.1 Schema, loader, validator
 - `CLEANER_SPEC.md` v1 implemented with serde `deny_unknown_fields`, path pattern engine, deny-list, risk/action matrix. `cleaners list|show|test`.
 - **AC:** golden tests for every validation error; proptest for deny-list/containment (`..`, symlinks, case, NFD/NFC).

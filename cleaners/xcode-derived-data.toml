@@ -1,0 +1,18 @@
+schema = 1
+id = "xcode-derived-data"
+version = "1.0.0"
+name = "Xcode DerivedData"
+description = "Build intermediates, module caches and indexes produced by Xcode."
+risk = "safe"
+risk_reason = "Only build outputs; Xcode recreates them."
+category = "developer/xcode"
+regenerates = "On the next build (first build and indexing slower)."
+
+[measure]
+paths = ["~/Library/Developer/Xcode/DerivedData/*"]
+
+[preconditions]
+process_not_running = ["Xcode"]
+
+[[action]]
+type = "delete_contents"

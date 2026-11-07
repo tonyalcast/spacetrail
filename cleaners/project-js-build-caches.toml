@@ -1,0 +1,17 @@
+schema = 1
+id = "project-js-build-caches"
+version = "1.0.0"
+name = "Stale JS framework caches"
+description = "Build caches of Next.js, Nuxt, Turborepo, Parcel and SvelteKit in inactive projects."
+risk = "review"
+risk_reason = "Rebuilt on the next dev/build run (slower first build)."
+category = "developer/projects"
+regenerates = "The next `dev` or `build` run."
+
+[project]
+markers = ["package.json"]
+artifacts = [".next", ".nuxt", ".turbo", ".parcel-cache", ".svelte-kit", ".angular"]
+stale_after = "60d"
+
+[[action]]
+type = "trash"

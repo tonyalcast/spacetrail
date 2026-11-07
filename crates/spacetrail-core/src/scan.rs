@@ -282,6 +282,7 @@ fn walk_dir(shared: &Shared<'_>, path: PathBuf, name: OsString, meta: &Metadata)
         name,
         own: Stats {
             alloc: allocated(meta),
+            newest_mtime: meta.mtime(),
             apparent: meta.len(),
             ..Stats::default()
         },
@@ -354,6 +355,7 @@ fn walk_dir(shared: &Shared<'_>, path: PathBuf, name: OsString, meta: &Metadata)
         node.own.alloc += alloc;
         node.own.apparent += m.len();
         node.own.files += 1;
+        node.own.newest_mtime = node.own.newest_mtime.max(m.mtime());
         if m.is_file() {
             shared.offer_top_file(|| entry.path(), &m, alloc);
         }

@@ -1,0 +1,16 @@
+schema = 1
+id = "go-mod-cache"
+version = "1.0.0"
+name = "Go module cache"
+description = "Downloaded Go modules and toolchains."
+risk = "review"
+risk_reason = "Needs network to re-download modules for every project."
+category = "developer/go"
+regenerates = "On the next `go build` / `go mod download`."
+
+[measure]
+paths = ["${GOMODCACHE:-~/go/pkg/mod}"]
+
+[[action]]
+type = "command"
+argv = ["go", "clean", "-modcache"]

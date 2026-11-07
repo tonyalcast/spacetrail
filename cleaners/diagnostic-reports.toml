@@ -1,0 +1,16 @@
+schema = 1
+id = "diagnostic-reports"
+version = "1.0.0"
+name = "Crash and diagnostic reports"
+description = "Crash, hang and spin reports written by macOS for your apps."
+risk = "safe"
+risk_reason = "Only useful for debugging past crashes."
+category = "system/logs"
+regenerates = "Not needed."
+
+[measure]
+paths = ["~/Library/Logs/DiagnosticReports/*"]
+
+[[action]]
+type = "delete_contents"
+older_than = "7d"

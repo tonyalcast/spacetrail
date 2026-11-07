@@ -1,0 +1,21 @@
+schema = 1
+id = "huggingface-cache"
+version = "1.0.0"
+name = "Hugging Face models"
+description = "Models and datasets downloaded by Hugging Face libraries."
+risk = "manual"
+risk_reason = "Models can be many GB to re-download; only you know which are in use."
+category = "ai/models"
+
+[measure]
+paths = ["${HF_HOME:-~/.cache/huggingface}/hub/*"]
+
+[[action]]
+type = "manual"
+instructions = """
+Inspect cached models and delete the ones you no longer use.
+"""
+suggested_commands = [
+  ["hf", "cache", "scan"],
+  ["huggingface-cli", "delete-cache"],
+]

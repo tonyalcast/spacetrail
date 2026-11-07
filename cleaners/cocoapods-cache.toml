@@ -1,0 +1,15 @@
+schema = 1
+id = "cocoapods-cache"
+version = "1.0.0"
+name = "CocoaPods cache"
+description = "Pod specs and downloaded pods."
+risk = "safe"
+risk_reason = "Re-downloaded on the next `pod install`."
+category = "developer/xcode"
+regenerates = "On the next `pod install`."
+
+[measure]
+paths = ["~/Library/Caches/CocoaPods"]
+
+[[action]]
+type = "delete_contents"

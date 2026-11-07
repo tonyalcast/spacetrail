@@ -1,0 +1,16 @@
+schema = 1
+id = "bun-cache"
+version = "1.0.0"
+name = "Bun cache"
+description = "Packages downloaded by Bun."
+risk = "safe"
+risk_reason = "Re-downloaded automatically."
+category = "developer/js"
+regenerates = "On the next `bun install`."
+
+[measure]
+paths = ["${BUN_INSTALL:-~/.bun}/install/cache"]
+
+[[action]]
+type = "command"
+argv = ["bun", "pm", "cache", "rm"]

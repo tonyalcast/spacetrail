@@ -1,0 +1,18 @@
+schema = 1
+id = "coresimulator-caches"
+version = "1.0.0"
+name = "Simulator caches"
+description = "Caches of the iOS/watchOS/tvOS simulators."
+risk = "safe"
+risk_reason = "Recreated by the simulator."
+category = "developer/xcode"
+regenerates = "Automatically."
+
+[measure]
+paths = ["~/Library/Developer/CoreSimulator/Caches/*"]
+
+[preconditions]
+process_not_running = ["Simulator", "Xcode"]
+
+[[action]]
+type = "delete_contents"

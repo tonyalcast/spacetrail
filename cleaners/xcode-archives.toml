@@ -1,0 +1,17 @@
+schema = 1
+id = "xcode-archives"
+version = "1.0.0"
+name = "Xcode archives"
+description = "Archived app builds (needed to symbolicate crashes of released versions)."
+risk = "manual"
+risk_reason = "Released builds' dSYMs cannot be regenerated."
+category = "developer/xcode"
+
+[measure]
+paths = ["~/Library/Developer/Xcode/Archives/*"]
+
+[[action]]
+type = "manual"
+instructions = """
+Open Xcode → Window → Organizer → Archives and delete old archives you no longer need for crash symbolication.
+"""

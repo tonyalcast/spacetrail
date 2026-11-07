@@ -1,0 +1,17 @@
+schema = 1
+id = "lmstudio-models"
+version = "1.0.0"
+name = "LM Studio models"
+description = "Local LLM weights downloaded by LM Studio."
+risk = "manual"
+risk_reason = "Several GB each to re-download."
+category = "ai/models"
+
+[measure]
+paths = ["~/.lmstudio/models/*/*", "~/.cache/lm-studio/models/*/*"]
+
+[[action]]
+type = "manual"
+instructions = """
+LM Studio → My Models: delete models you no longer use.
+"""

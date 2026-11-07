@@ -1,0 +1,17 @@
+schema = 1
+id = "project-gradle-build"
+version = "1.0.0"
+name = "Stale Gradle build folders"
+description = "Build output and project caches of inactive Gradle/Android projects."
+risk = "review"
+risk_reason = "Rebuilt by Gradle (slow first build)."
+category = "developer/projects"
+regenerates = "The next Gradle build."
+
+[project]
+markers = ["build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts"]
+artifacts = ["build", ".gradle"]
+stale_after = "60d"
+
+[[action]]
+type = "trash"

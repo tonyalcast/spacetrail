@@ -1,0 +1,18 @@
+schema = 1
+id = "cursor-caches"
+version = "1.0.0"
+name = "Cursor caches"
+description = "Chromium/Electron caches of Cursor: compiled code, GPU shaders, HTTP cache and downloaded extension packages."
+risk = "safe"
+risk_reason = "Pure caches; the editor rebuilds them on next start."
+category = "developer/editors"
+regenerates = "On next Cursor start (first start slightly slower)."
+
+[measure]
+paths = ["~/Library/Application Support/Cursor/Cache", "~/Library/Application Support/Cursor/CachedData", "~/Library/Application Support/Cursor/Code Cache", "~/Library/Application Support/Cursor/GPUCache", "~/Library/Application Support/Cursor/CachedExtensionVSIXs", "~/Library/Application Support/Cursor/CachedProfilesData", "~/Library/Application Support/Cursor/Service Worker/CacheStorage"]
+
+[preconditions]
+process_not_running = ["Cursor"]
+
+[[action]]
+type = "delete_contents"

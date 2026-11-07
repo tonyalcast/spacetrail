@@ -1,0 +1,17 @@
+schema = 1
+id = "project-rust-target"
+version = "1.0.0"
+name = "Stale Rust target/ folders"
+description = "Cargo build output of inactive Rust projects."
+risk = "review"
+risk_reason = "Rebuilt by `cargo build`, which can take minutes."
+category = "developer/projects"
+regenerates = "`cargo build` in the project."
+
+[project]
+markers = ["Cargo.toml"]
+artifacts = ["target"]
+stale_after = "60d"
+
+[[action]]
+type = "trash"

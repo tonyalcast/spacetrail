@@ -1,0 +1,20 @@
+schema = 1
+id = "nvm-node-versions"
+version = "1.0.0"
+name = "Node.js versions (nvm)"
+description = "Node.js versions installed with nvm; each one also holds its global packages."
+risk = "manual"
+risk_reason = "Projects may pin a specific version; only you know which are still needed."
+category = "developer/js"
+
+[measure]
+paths = ["~/.nvm/versions/node/*"]
+
+[[action]]
+type = "manual"
+instructions = """
+List versions and uninstall the ones no project uses: `nvm ls`, then `nvm uninstall <version>`.
+"""
+suggested_commands = [
+  ["nvm", "ls"],
+]

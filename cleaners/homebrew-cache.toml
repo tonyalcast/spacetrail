@@ -1,0 +1,19 @@
+schema = 1
+id = "homebrew-cache"
+version = "1.0.0"
+name = "Homebrew downloads and old versions"
+description = "Downloaded bottles and outdated formula versions."
+risk = "safe"
+risk_reason = "Homebrew re-downloads if a reinstall is needed."
+category = "system/homebrew"
+regenerates = "Only re-downloaded on reinstall."
+
+[detect]
+command_exists = ["brew"]
+
+[measure]
+paths = ["~/Library/Caches/Homebrew"]
+
+[[action]]
+type = "command"
+argv = ["brew", "cleanup", "--prune=all"]

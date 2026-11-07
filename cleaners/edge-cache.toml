@@ -1,0 +1,18 @@
+schema = 1
+id = "edge-cache"
+version = "1.0.0"
+name = "Microsoft Edge cache"
+description = "Web cache of the browser (pages, images, scripts)."
+risk = "review"
+risk_reason = "Pages load slower until the cache refills; nothing personal is lost."
+category = "apps/browsers"
+regenerates = "As you browse."
+
+[measure]
+paths = ["~/Library/Caches/Microsoft Edge"]
+
+[preconditions]
+process_not_running = ["Microsoft Edge"]
+
+[[action]]
+type = "delete_contents"

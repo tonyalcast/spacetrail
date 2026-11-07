@@ -1,0 +1,17 @@
+schema = 1
+id = "library-caches"
+version = "1.0.0"
+name = "Other app caches (not used in 30 days)"
+description = "Caches in ~/Library/Caches of apps not used for a month."
+risk = "safe"
+risk_reason = "Caches are rebuilt by their apps."
+category = "system/caches"
+regenerates = "Apps rebuild their caches when needed."
+
+[measure]
+paths = ["~/Library/Caches/*"]
+min_item_bytes = "10MB"
+
+[[action]]
+type = "delete_contents"
+older_than = "30d"

@@ -1,0 +1,17 @@
+schema = 1
+id = "project-dart-tool"
+version = "1.0.0"
+name = "Stale Dart/Flutter build folders"
+description = "Tool state and build output of inactive Flutter/Dart projects."
+risk = "review"
+risk_reason = "Rebuilt by `flutter pub get` / `flutter build`."
+category = "developer/projects"
+regenerates = "`flutter pub get`."
+
+[project]
+markers = ["pubspec.yaml"]
+artifacts = [".dart_tool", "build"]
+stale_after = "60d"
+
+[[action]]
+type = "trash"

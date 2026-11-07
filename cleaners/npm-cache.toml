@@ -1,0 +1,16 @@
+schema = 1
+id = "npm-cache"
+version = "1.0.0"
+name = "npm cache"
+description = "Packages downloaded by npm."
+risk = "safe"
+risk_reason = "npm re-downloads anything it needs."
+category = "developer/js"
+regenerates = "On the next `npm install` (needs network)."
+
+[measure]
+paths = ["${npm_config_cache:-~/.npm}/_cacache"]
+
+[[action]]
+type = "command"
+argv = ["npm", "cache", "clean", "--force"]

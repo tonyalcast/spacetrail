@@ -1,0 +1,18 @@
+schema = 1
+id = "chrome-cache"
+version = "1.0.0"
+name = "Google Chrome cache"
+description = "Web cache of the browser (pages, images, scripts)."
+risk = "review"
+risk_reason = "Pages load slower until the cache refills; nothing personal is lost."
+category = "apps/browsers"
+regenerates = "As you browse."
+
+[measure]
+paths = ["~/Library/Caches/Google/Chrome"]
+
+[preconditions]
+process_not_running = ["Google Chrome"]
+
+[[action]]
+type = "delete_contents"

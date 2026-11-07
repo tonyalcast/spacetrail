@@ -1,0 +1,17 @@
+schema = 1
+id = "user-logs"
+version = "1.0.0"
+name = "Old application logs"
+description = "Log files written by apps in ~/Library/Logs."
+risk = "safe"
+risk_reason = "Logs are only diagnostic."
+category = "system/logs"
+regenerates = "Apps write new logs."
+
+[measure]
+paths = ["~/Library/Logs/*"]
+exclude = ["DiagnosticReports"]
+
+[[action]]
+type = "delete_contents"
+older_than = "14d"

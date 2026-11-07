@@ -1,0 +1,15 @@
+schema = 1
+id = "maven-repository"
+version = "1.0.0"
+name = "Maven repository"
+description = "Artifacts downloaded by Maven."
+risk = "review"
+risk_reason = "Re-downloaded on the next build."
+category = "developer/jvm"
+regenerates = "On the next `mvn` build."
+
+[measure]
+paths = ["~/.m2/repository"]
+
+[[action]]
+type = "delete_contents"

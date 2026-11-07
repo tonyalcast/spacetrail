@@ -1,0 +1,16 @@
+schema = 1
+id = "cursor-logs"
+version = "1.0.0"
+name = "Cursor logs"
+description = "Log files from previous Cursor sessions. Extensions with verbose logging (e.g. C# Dev Kit) can write several GB per session."
+risk = "safe"
+risk_reason = "Diagnostic logs only; the current session keeps writing its own."
+category = "developer/editors"
+regenerates = "Not needed; new logs are written each session."
+
+[measure]
+paths = ["~/Library/Application Support/Cursor/logs/*"]
+
+[[action]]
+type = "delete_contents"
+older_than = "1d"

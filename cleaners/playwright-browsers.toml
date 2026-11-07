@@ -1,0 +1,15 @@
+schema = 1
+id = "playwright-browsers"
+version = "1.0.0"
+name = "Playwright browsers"
+description = "Browser builds downloaded by Playwright for end-to-end tests."
+risk = "review"
+risk_reason = "Large re-download (hundreds of MB per browser) before tests can run again."
+category = "developer/js"
+regenerates = "`npx playwright install` downloads them again."
+
+[measure]
+paths = ["~/Library/Caches/ms-playwright/*"]
+
+[[action]]
+type = "delete_contents"

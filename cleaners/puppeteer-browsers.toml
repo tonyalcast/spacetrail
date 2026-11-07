@@ -1,0 +1,15 @@
+schema = 1
+id = "puppeteer-browsers"
+version = "1.0.0"
+name = "Puppeteer browsers"
+description = "Chrome builds downloaded by Puppeteer."
+risk = "review"
+risk_reason = "Large re-download before Puppeteer can run again."
+category = "developer/js"
+regenerates = "Downloaded again on next Puppeteer install."
+
+[measure]
+paths = ["~/.cache/puppeteer/*"]
+
+[[action]]
+type = "delete_contents"

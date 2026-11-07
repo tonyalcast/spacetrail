@@ -1,0 +1,19 @@
+schema = 1
+id = "pnpm-store"
+version = "1.0.0"
+name = "pnpm store"
+description = "Content-addressed package store shared by pnpm projects. `prune` removes only packages no project references."
+risk = "safe"
+risk_reason = "Prune keeps everything still referenced."
+category = "developer/js"
+regenerates = "Unreferenced packages are re-downloaded if a project needs them again."
+
+[detect]
+command_exists = ["pnpm"]
+
+[measure]
+paths = ["~/Library/pnpm/store"]
+
+[[action]]
+type = "command"
+argv = ["pnpm", "store", "prune"]

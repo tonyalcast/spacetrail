@@ -1,0 +1,15 @@
+schema = 1
+id = "ios-device-support"
+version = "1.0.0"
+name = "iOS DeviceSupport"
+description = "Debug symbols copied from every iOS version of devices you connected."
+risk = "review"
+risk_reason = "Re-copied (slowly) the next time a device with that iOS version is connected."
+category = "developer/xcode"
+regenerates = "When a device with that OS version is connected again."
+
+[measure]
+paths = ["~/Library/Developer/Xcode/iOS DeviceSupport/*", "~/Library/Developer/Xcode/watchOS DeviceSupport/*"]
+
+[[action]]
+type = "delete_contents"

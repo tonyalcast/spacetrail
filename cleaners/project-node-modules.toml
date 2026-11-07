@@ -1,0 +1,17 @@
+schema = 1
+id = "project-node-modules"
+version = "1.0.0"
+name = "Stale node_modules"
+description = "Installed JavaScript dependencies of projects you have not touched recently."
+risk = "review"
+risk_reason = "Reinstallable from the lockfile, but needs network and time."
+category = "developer/projects"
+regenerates = "`npm install` / `pnpm install` / `yarn` / `bun install` in the project."
+
+[project]
+markers = ["package.json"]
+artifacts = ["node_modules"]
+stale_after = "60d"
+
+[[action]]
+type = "trash"

@@ -1,0 +1,17 @@
+schema = 1
+id = "project-python-venv"
+version = "1.0.0"
+name = "Stale Python virtualenvs"
+description = "Virtual environments of inactive Python projects."
+risk = "review"
+risk_reason = "Recreated from requirements/lockfile (network, time)."
+category = "developer/projects"
+regenerates = "`uv sync`, `poetry install` or `pip install -r requirements.txt`."
+
+[project]
+markers = ["pyproject.toml", "requirements.txt", "setup.py", "Pipfile"]
+artifacts = [".venv", "venv"]
+stale_after = "60d"
+
+[[action]]
+type = "trash"

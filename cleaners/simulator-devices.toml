@@ -1,0 +1,25 @@
+schema = 1
+id = "simulator-devices"
+version = "1.0.0"
+name = "Simulator devices"
+description = "iOS/watchOS/tvOS simulator devices with their installed apps and data. Devices whose runtime is gone are dead weight."
+risk = "manual"
+risk_reason = "Devices hold app data you may be testing with; only devices without a runtime are safe to drop."
+category = "developer/xcode"
+
+[detect]
+command_exists = ["xcrun"]
+
+[measure]
+paths = ["~/Library/Developer/CoreSimulator/Devices"]
+group_by = "cleaner"
+
+[[action]]
+type = "manual"
+instructions = """
+Delete devices whose runtime is no longer installed (always safe), then remove other devices you don't use from Xcode → Window → Devices and Simulators.
+"""
+suggested_commands = [
+  ["xcrun", "simctl", "delete", "unavailable"],
+  ["xcrun", "simctl", "list", "devices"],
+]

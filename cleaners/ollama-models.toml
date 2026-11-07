@@ -1,0 +1,22 @@
+schema = 1
+id = "ollama-models"
+version = "1.0.0"
+name = "Ollama models"
+description = "Local LLM weights downloaded by Ollama."
+risk = "manual"
+risk_reason = "Several GB each to re-download; only you know which are still used."
+category = "ai/models"
+
+[measure]
+paths = ["${OLLAMA_MODELS:-~/.ollama/models}"]
+group_by = "cleaner"
+
+[[action]]
+type = "manual"
+instructions = """
+List installed models and remove the ones you no longer use.
+"""
+suggested_commands = [
+  ["ollama", "list"],
+  ["ollama", "rm", "<model>"],
+]

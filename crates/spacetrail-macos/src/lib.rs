@@ -7,11 +7,13 @@ compile_error!("spacetrail-macos only builds on macOS");
 
 pub mod apfs;
 pub mod dataless;
+pub mod docker;
 pub mod fda;
 pub mod firmlinks;
 pub mod hints;
 pub mod mounts;
 mod probe;
+pub mod process;
 pub mod volume;
 
 pub use dataless::{MacPlatform, prevent_materialization};

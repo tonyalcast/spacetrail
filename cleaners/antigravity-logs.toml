@@ -1,0 +1,16 @@
+schema = 1
+id = "antigravity-logs"
+version = "1.0.0"
+name = "Antigravity logs"
+description = "Log files from previous Antigravity sessions. Extensions with verbose logging (e.g. C# Dev Kit) can write several GB per session."
+risk = "safe"
+risk_reason = "Diagnostic logs only; the current session keeps writing its own."
+category = "developer/editors"
+regenerates = "Not needed; new logs are written each session."
+
+[measure]
+paths = ["~/Library/Application Support/Antigravity/logs/*"]
+
+[[action]]
+type = "delete_contents"
+older_than = "1d"

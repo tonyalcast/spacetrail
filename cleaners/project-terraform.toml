@@ -1,0 +1,17 @@
+schema = 1
+id = "project-terraform"
+version = "1.0.0"
+name = "Stale Terraform providers"
+description = ".terraform folders (downloaded providers and modules) of inactive configurations."
+risk = "review"
+risk_reason = "Re-downloaded by `terraform init`."
+category = "developer/projects"
+regenerates = "`terraform init`."
+
+[project]
+markers = ["*.tf"]
+artifacts = [".terraform"]
+stale_after = "60d"
+
+[[action]]
+type = "trash"

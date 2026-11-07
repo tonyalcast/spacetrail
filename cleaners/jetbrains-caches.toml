@@ -1,0 +1,15 @@
+schema = 1
+id = "jetbrains-caches"
+version = "1.0.0"
+name = "JetBrains IDE caches"
+description = "Indexes and caches of IntelliJ-based IDEs."
+risk = "safe"
+risk_reason = "Rebuilt on next start (re-indexing)."
+category = "developer/editors"
+regenerates = "Re-indexing on next project open."
+
+[measure]
+paths = ["~/Library/Caches/JetBrains/*"]
+
+[[action]]
+type = "delete_contents"

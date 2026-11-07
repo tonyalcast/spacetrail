@@ -1,0 +1,16 @@
+schema = 1
+id = "uv-cache"
+version = "1.0.0"
+name = "uv cache"
+description = "Packages, built wheels and Python downloads cached by uv."
+risk = "safe"
+risk_reason = "uv re-downloads or rebuilds what it needs."
+category = "developer/python"
+regenerates = "On the next `uv sync` / `uv pip install` (needs network)."
+
+[measure]
+paths = ["${UV_CACHE_DIR:-~/.cache/uv}"]
+
+[[action]]
+type = "command"
+argv = ["uv", "cache", "clean"]

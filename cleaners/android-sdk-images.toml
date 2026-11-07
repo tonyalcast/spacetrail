@@ -1,0 +1,17 @@
+schema = 1
+id = "android-sdk-images"
+version = "1.0.0"
+name = "Android SDK system images and NDKs"
+description = "System images for emulators and NDK versions installed by the SDK manager."
+risk = "manual"
+risk_reason = "Builds or emulators may depend on a specific version."
+category = "developer/android"
+
+[measure]
+paths = ["~/Library/Android/sdk/system-images/*", "~/Library/Android/sdk/ndk/*"]
+
+[[action]]
+type = "manual"
+instructions = """
+Android Studio → Settings → Languages & Frameworks → Android SDK: uncheck versions you no longer need.
+"""
