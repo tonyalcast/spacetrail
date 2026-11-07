@@ -102,7 +102,10 @@ pub fn run(
         .collect();
     suggest::order_by_specificity(&mut rules);
     for (c, src) in &rules {
-        if let Some(s) = suggest::evaluate(c, *src, &sys, &mut claims, 1) {
+        if let Some(mut s) = suggest::evaluate(c, *src, &sys, &mut claims, 1) {
+            if s.risk == Risk::Manual {
+                crate::manual::enrich(&mut s, &sys);
+            }
             out.push(s);
         }
     }

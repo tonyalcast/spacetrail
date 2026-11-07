@@ -18,6 +18,28 @@ pub(crate) enum Probe {
     TmutilListLocalSnapshots,
     /// Docker disk usage summary (images, containers, volumes, build cache).
     DockerSystemDf,
+    /// Installed simulator runtimes (JSON).
+    SimctlRuntimeList,
+}
+
+/// `simctl` inside Xcode (works even when `xcode-select` points to the
+/// Command Line Tools, where `xcrun simctl` is missing).
+#[must_use]
+pub fn simctl_path() -> Option<std::path::PathBuf> {
+    let mut apps: Vec<std::path::PathBuf> = std::fs::read_dir("/Applications")
+        .ok()?
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| {
+            p.file_name().is_some_and(|n| {
+                n.to_string_lossy().starts_with("Xcode") && n.to_string_lossy().ends_with(".app")
+            })
+        })
+        .collect();
+    apps.sort();
+    apps.into_iter()
+        .map(|a| a.join("Contents/Developer/usr/bin/simctl"))
+        .find(|p| p.is_file())
 }
 
 /// Where Docker Desktop / Homebrew install the `docker` CLI.
@@ -28,7 +50,21 @@ const DOCKER_CANDIDATES: &[&str] = &[
 ];
 
 impl Probe {
-    fn argv(self) -> Option<Vec<&'static str>> {
+    fn argv(self) -> Option<Vec<String>> {
+        self.argv_static()
+            .map(|v| v.into_iter().map(str::to_owned).collect())
+            .or_else(|| match self {
+                Self::SimctlRuntimeList => Some(vec![
+                    simctl_path()?.display().to_string(),
+                    "runtime".into(),
+                    "list".into(),
+                    "-j".into(),
+                ]),
+                _ => None,
+            })
+    }
+
+    fn argv_static(self) -> Option<Vec<&'static str>> {
         Some(match self {
             Self::DiskutilApfsList => vec!["/usr/sbin/diskutil", "apfs", "list", "-plist"],
             Self::TmutilListLocalSnapshots => vec!["/usr/bin/tmutil", "listlocalsnapshots", "/"],
@@ -36,12 +72,17 @@ impl Probe {
                 let docker = DOCKER_CANDIDATES.iter().find(|p| Path::new(p).exists())?;
                 vec![docker, "system", "df", "--format", "{{json .}}"]
             }
+            Self::SimctlRuntimeList => {
+                let simctl: &'static str =
+                    Box::leak(simctl_path()?.display().to_string().into_boxed_str());
+                vec![simctl, "runtime", "list", "-j"]
+            }
         })
     }
 
     /// Extra environment a probe needs (the environment is otherwise cleared).
     fn needs_home(self) -> bool {
-        matches!(self, Self::DockerSystemDf)
+        matches!(self, Self::DockerSystemDf | Self::SimctlRuntimeList)
     }
 }
 
@@ -61,7 +102,7 @@ pub(crate) fn run(probe: Probe) -> io::Result<Vec<u8>> {
         clippy::disallowed_methods,
         reason = "fixed allow-list of read-only system probes"
     )]
-    let mut cmd = Command::new(argv[0]);
+    let mut cmd = Command::new(&argv[0]);
     cmd.args(&argv[1..])
         .env_clear()
         .env("PATH", "/usr/bin:/bin:/usr/sbin:/sbin")

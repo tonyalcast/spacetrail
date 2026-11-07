@@ -7,6 +7,7 @@
 pub mod catalog;
 pub mod detectors;
 pub mod executor;
+pub mod manual;
 pub mod pattern;
 pub mod report;
 pub mod schema;

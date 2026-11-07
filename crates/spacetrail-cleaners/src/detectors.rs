@@ -212,6 +212,7 @@ pub fn projects(
                         path,
                         bytes,
                         newest_mtime: n.total.newest_mtime,
+                        ..Default::default()
                     });
                 }
             }
@@ -288,6 +289,7 @@ pub fn projects(
                 path,
                 bytes,
                 newest_mtime: last,
+                ..Default::default()
             });
         }
     }
@@ -388,6 +390,7 @@ pub fn orphaned_workspaces(ctx: &Context, claims: &mut Claims) -> Option<Suggest
                 bytes,
                 newest_mtime: m.newest_mtime,
                 note: Some(format!("{app}: {}", target.display())),
+                ..Default::default()
             });
         }
         if found {
@@ -456,6 +459,7 @@ pub fn agent_versions(ctx: &Context, claims: &mut Claims) -> Option<Suggestion> 
                 bytes,
                 newest_mtime: m.newest_mtime,
                 note: None,
+                ..Default::default()
             });
         }
         // Leftover downloads next to the install.
@@ -474,6 +478,7 @@ pub fn agent_versions(ctx: &Context, claims: &mut Claims) -> Option<Suggestion> 
                         bytes: m.bytes,
                         newest_mtime: m.newest_mtime,
                         note: Some("leftover download".into()),
+                        ..Default::default()
                     });
                 }
             }
@@ -505,6 +510,7 @@ pub fn docker(ctx: &Context, claims: &mut Claims) -> Vec<Suggestion> {
         bytes,
         newest_mtime: disk.newest_mtime,
         note: None,
+        ..Default::default()
     };
     let rows = match docker::system_df() {
         Ok(rows) => rows,
@@ -593,6 +599,15 @@ pub fn docker(ctx: &Context, claims: &mut Claims) -> Vec<Suggestion> {
                 argv.extend(cmd.iter().skip(1).map(|a| (*a).to_owned()));
                 Exec::Command { argv }
             }
+            // Unused volumes: Docker's own prune (anonymous volumes no container uses).
+            (Risk::Manual, Some(docker)) => Exec::Command {
+                argv: vec![
+                    docker.display().to_string(),
+                    "volume".into(),
+                    "prune".into(),
+                    "--force".into(),
+                ],
+            },
             _ => Exec::None,
         };
         s.notes.push(disk_note.clone());
@@ -615,6 +630,8 @@ pub fn large_app_data(ctx: &Context, claims: &Claims, min_bytes: u64) -> Option<
         "This is app data: remove it from inside the app or uninstall apps you no longer use.",
     );
     s.how.summary = "Clean it up from inside each app, or uninstall apps you no longer use".into();
+    // Only items the user picks one by one, and only to the Trash.
+    s.exec = Exec::RemoveItems;
     let parents = [
         "Library/Application Support",
         "Library/Containers",
@@ -639,6 +656,7 @@ pub fn large_app_data(ctx: &Context, claims: &Claims, min_bytes: u64) -> Option<
                         "last used {}",
                         age_text(ctx.now, n.total.newest_mtime)
                     )),
+                    ..Default::default()
                 });
             }
         }

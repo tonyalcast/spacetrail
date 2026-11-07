@@ -355,6 +355,32 @@ fn trash_in(
     Ok(record)
 }
 
+/// Puts a trashed item back where it was, if that place is still free.
+///
+/// # Errors
+/// Unknown id, the original location is taken, or the item left the Trash.
+pub fn restore(id: &str, journal: &Journal) -> Result<TrashRecord, ExecError> {
+    let mut r = journal
+        .records()
+        .into_iter()
+        .find(|r| r.id == id && !r.restored && r.method == "trash")
+        .ok_or(ExecError::UnknownId)?;
+    if fs::symlink_metadata(&r.original).is_ok() {
+        return Err(io::Error::new(
+            io::ErrorKind::AlreadyExists,
+            "something already exists at the original location",
+        )
+        .into());
+    }
+    if fs::symlink_metadata(&r.trashed_to).is_err() {
+        return Err(io::Error::new(io::ErrorKind::NotFound, "it is no longer in the Trash").into());
+    }
+    fs::rename(&r.trashed_to, &r.original)?;
+    r.restored = true;
+    journal.append(&r)?;
+    Ok(r)
+}
+
 /// Deletes `path` permanently after the same checks as [`trash`]. Not undoable.
 ///
 /// # Errors
@@ -452,6 +478,19 @@ pub fn run_command(
     argv: &[String],
     timeout: std::time::Duration,
 ) -> Result<CommandOutcome, ExecError> {
+    run_command_with(argv, timeout, &[])
+}
+
+/// [`run_command`] with extra directories on `PATH` (so tools written as
+/// `#!/usr/bin/env node` scripts find the interpreter they need).
+///
+/// # Errors
+/// Invalid program, spawn failure or timeout.
+pub fn run_command_with(
+    argv: &[String],
+    timeout: std::time::Duration,
+    search: &[PathBuf],
+) -> Result<CommandOutcome, ExecError> {
     use std::process::{Command, Stdio};
     let prog = argv.first().map(Path::new).ok_or(Refusal::InvalidPath)?;
     let base = prog
@@ -470,6 +509,10 @@ pub fn run_command(
         path.push_str(&dir.display().to_string());
         path.push(':');
     }
+    for d in search.iter().filter(|d| d.is_dir()) {
+        path.push_str(&d.display().to_string());
+        path.push(':');
+    }
     path.push_str("/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin");
     let out_file = tempfile_path("out");
     let stdout = fs::File::create(&out_file)?;
@@ -479,9 +522,17 @@ pub fn run_command(
         reason = "the single executor runs tool cleanups"
     )]
     let mut cmd = Command::new(prog);
+    // A neutral working directory: apps start in "/" (read-only), and some
+    // tools change behavior based on project files in the current folder
+    // (e.g. corepack refuses `yarn` under a package.json that asks for pnpm).
+    let tmp = std::env::temp_dir();
+    let workdir = tmp.join(format!("spacetrail-run-{}-{}", std::process::id(), now()));
+    fs::create_dir_all(&workdir)?;
     cmd.args(&argv[1..])
+        .current_dir(&workdir)
         .env_clear()
         .env("PATH", path)
+        .env("TMPDIR", &tmp)
         .env("LC_ALL", "C")
         .stdin(Stdio::null())
         .stdout(stdout)
@@ -507,7 +558,15 @@ pub fn run_command(
         std::thread::sleep(std::time::Duration::from_millis(100));
     };
     let text = fs::read_to_string(&out_file).unwrap_or_default();
-    let _ = fs::write(&out_file, b""); // leave no output behind
+    // Clean up our own scratch files (never user data).
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "removes the executor's own temp files"
+    )]
+    {
+        let _ = fs::remove_file(&out_file);
+        let _ = fs::remove_dir(&workdir);
+    }
     let tail: Vec<&str> = text.lines().rev().take(12).collect();
     Ok(CommandOutcome {
         ok: status.success(),
@@ -536,30 +595,45 @@ pub struct StepResult {
     pub id: String,
     /// Suggestion name.
     pub name: String,
-    /// "trash", "permanent", "command", "worktree" or "skipped".
+    /// "trash", "permanent", "command", "uninstall", "worktree" or "skipped".
     pub method: String,
     /// At least one action succeeded and none failed.
     pub ok: bool,
-    /// Items or commands that succeeded / failed.
+    /// Items or commands that succeeded.
     pub done: usize,
-    /// Failed count.
+    /// Items or commands that failed or were skipped.
     pub failed: usize,
-    /// Bytes freed (permanent, command estimate) or moved to the Trash.
+    /// Bytes freed (measured where possible) or moved to the Trash.
     pub bytes: u64,
     /// Human messages (errors, skipped reasons, command output).
     pub messages: Vec<String>,
     /// Journal ids that can be undone.
     pub undo_ids: Vec<String>,
+    /// Items to send again when retrying.
+    pub retry_items: Vec<PathBuf>,
 }
 
-/// Carries out one suggestion as decided by the planner. Re-checks open apps,
-/// runs every item through the safety checks, never runs `manual` risk.
+fn measured(paths: &[&Path]) -> u64 {
+    paths
+        .iter()
+        .filter_map(|p| crate::suggest::measure(p))
+        .map(|m| m.bytes)
+        .sum()
+}
+
+/// Carries out one suggestion as decided by the planner.
+///
+/// `only` restricts it to these items (must belong to the suggestion). For
+/// `manual` ("your call") suggestions it is required: the user picks each item
+/// explicitly, and they are never deleted permanently. Apps that must be
+/// closed are checked again here.
 pub fn run_suggestion(
     s: &crate::suggest::Suggestion,
     ctx: &crate::suggest::Context,
     backend: &dyn TrashBackend,
     journal: &Journal,
     opts: &RunOptions,
+    only: Option<&[PathBuf]>,
 ) -> StepResult {
     use crate::schema::Risk;
     use crate::suggest::Exec;
@@ -573,27 +647,89 @@ pub fn run_suggestion(
         bytes: 0,
         messages: Vec::new(),
         undo_ids: Vec::new(),
+        retry_items: Vec::new(),
     };
-    if s.risk == Risk::Manual {
-        r.messages
-            .push("spacetrail never cleans “your call” items automatically.".into());
+    let manual = s.risk == Risk::Manual;
+    let items: Vec<&crate::suggest::Item> = s
+        .items
+        .iter()
+        .filter(|i| only.is_none_or(|o| o.contains(&i.path)))
+        .collect();
+    if manual && only.is_none_or(<[PathBuf]>::is_empty) {
+        r.messages.push(
+            "Pick the items you want to remove: “your call” items are never removed in bulk."
+                .into(),
+        );
         return r;
     }
     let open = ctx.running(&s.apps_to_close);
     if !open.is_empty() {
-        r.messages
-            .push(format!("Skipped: close {} first.", open.join(", ")));
+        r.failed = items.len().max(1);
+        r.retry_items = items.iter().map(|i| i.path.clone()).collect();
+        r.messages.push(format!(
+            "Skipped: close {} first, then retry.",
+            open.join(", ")
+        ));
         return r;
     }
+    let permanent = opts.permanent && !manual;
     let source = format!("{} · {}", opts.source, s.id);
     match &s.exec {
         Exec::None => r
             .messages
             .push("spacetrail can't do this one for you; see the instructions.".into()),
         Exec::RemoveItems => {
-            r.method = if opts.permanent { "permanent" } else { "trash" }.into();
-            for item in &s.items {
-                let res = if opts.permanent {
+            r.method = if permanent { "permanent" } else { "trash" }.into();
+            for item in items {
+                if let Some(why) = &item.protected {
+                    r.messages
+                        .push(format!("{}: kept ({why}).", item.path.display()));
+                    continue;
+                }
+                if let Some(argv) = &item.argv {
+                    // The tool's own uninstaller (ollama rm, rustup toolchain uninstall…).
+                    r.method = "uninstall".into();
+                    let label = item
+                        .note
+                        .clone()
+                        .unwrap_or_else(|| item.path.display().to_string());
+                    match run_command_with(
+                        argv,
+                        std::time::Duration::from_secs(30 * 60),
+                        &ctx.path_dirs,
+                    ) {
+                        Ok(out) if out.ok => {
+                            r.done += 1;
+                            r.bytes += item.bytes;
+                            let _ = journal.append(&TrashRecord {
+                                id: format!("{}-u{}", now(), r.done),
+                                at: now(),
+                                original: item.path.clone(),
+                                trashed_to: PathBuf::new(),
+                                bytes: item.bytes,
+                                kind: "uninstall".into(),
+                                source: source.clone(),
+                                restored: false,
+                                method: "command".into(),
+                            });
+                        }
+                        Ok(out) => {
+                            r.failed += 1;
+                            r.retry_items.push(item.path.clone());
+                            r.messages.push(format!(
+                                "{label}: {}",
+                                out.output.lines().last().unwrap_or("failed")
+                            ));
+                        }
+                        Err(e) => {
+                            r.failed += 1;
+                            r.retry_items.push(item.path.clone());
+                            r.messages.push(format!("{label}: {e}"));
+                        }
+                    }
+                    continue;
+                }
+                let res = if permanent {
                     remove_permanently(&item.path, &ctx.home, journal, item.bytes, &source)
                 } else {
                     trash(&item.path, &ctx.home, backend, journal, item.bytes, &source)
@@ -605,9 +741,27 @@ pub fn run_suggestion(
                         if rec.method == "trash" {
                             r.undo_ids.push(rec.id);
                         }
+                        for c in &item.companions {
+                            let res = if permanent {
+                                remove_permanently(c, &ctx.home, journal, 0, &source)
+                            } else {
+                                trash(c, &ctx.home, backend, journal, 0, &source)
+                            };
+                            match res {
+                                Ok(rec) if rec.method == "trash" => r.undo_ids.push(rec.id),
+                                Ok(_) => {}
+                                Err(e) => r.messages.push(format!("{}: {e}", c.display())),
+                            }
+                        }
+                    }
+                    Err(ExecError::Refused(Refusal::Missing)) => {
+                        r.done += 1;
+                        r.messages
+                            .push(format!("{}: already gone.", item.path.display()));
                     }
                     Err(e) => {
                         r.failed += 1;
+                        r.retry_items.push(item.path.clone());
                         r.messages.push(format!("{}: {e}", item.path.display()));
                     }
                 }
@@ -615,10 +769,20 @@ pub fn run_suggestion(
         }
         Exec::Command { argv } => {
             r.method = "command".into();
-            match run_command(argv, std::time::Duration::from_secs(15 * 60)) {
+            let paths: Vec<&Path> = s.items.iter().map(|i| i.path.as_path()).collect();
+            let before = measured(&paths);
+            match run_command_with(
+                argv,
+                std::time::Duration::from_secs(15 * 60),
+                &ctx.path_dirs,
+            ) {
                 Ok(out) if out.ok => {
                     r.done = 1;
-                    r.bytes = s.bytes;
+                    // Measure what really left the disk instead of trusting the estimate.
+                    r.bytes = before.saturating_sub(measured(&paths));
+                    if r.bytes == 0 {
+                        r.messages.push("The tool finished but nothing measurable was freed (it had nothing to remove, or it frees space gradually, like Docker).".into());
+                    }
                     if !out.output.trim().is_empty() {
                         r.messages.push(out.output);
                     }
@@ -626,8 +790,9 @@ pub fn run_suggestion(
                 Ok(out) => {
                     r.failed = 1;
                     r.messages.push(format!(
-                        "The command failed (exit {:?}): {}",
-                        out.code, out.output
+                        "The command failed (exit {}): {}",
+                        out.code.map_or("?".into(), |c| c.to_string()),
+                        out.output
                     ));
                 }
                 Err(e) => {
@@ -652,8 +817,7 @@ pub fn run_suggestion(
             let git = ctx
                 .which("git")
                 .unwrap_or_else(|| PathBuf::from("/usr/bin/git"));
-            for item in &s.items {
-                // Never reaches outside the safety checks: the worktree itself must be removable.
+            for item in items {
                 if let Err(e) = check(&item.path, &ctx.home) {
                     r.failed += 1;
                     r.messages.push(format!("{}: {e}", item.path.display()));
@@ -668,7 +832,7 @@ pub fn run_suggestion(
                     "remove".into(),
                     p.clone(),
                 ];
-                match run_command(&argv, std::time::Duration::from_secs(120)) {
+                match run_command_with(&argv, std::time::Duration::from_secs(120), &ctx.path_dirs) {
                     Ok(out) if out.ok => {
                         r.done += 1;
                         r.bytes += item.bytes;
@@ -686,6 +850,7 @@ pub fn run_suggestion(
                     }
                     Ok(out) => {
                         r.failed += 1;
+                        r.retry_items.push(item.path.clone());
                         r.messages.push(format!(
                             "{p}: git refused: {}",
                             out.output.lines().last().unwrap_or("")
@@ -693,6 +858,7 @@ pub fn run_suggestion(
                     }
                     Err(e) => {
                         r.failed += 1;
+                        r.retry_items.push(item.path.clone());
                         r.messages.push(format!("{p}: {e}"));
                     }
                 }
@@ -701,32 +867,6 @@ pub fn run_suggestion(
     }
     r.ok = r.done > 0 && r.failed == 0;
     r
-}
-
-/// Puts a trashed item back where it was, if that place is still free.
-///
-/// # Errors
-/// Unknown id, the original location is taken, or the item left the Trash.
-pub fn restore(id: &str, journal: &Journal) -> Result<TrashRecord, ExecError> {
-    let mut r = journal
-        .records()
-        .into_iter()
-        .find(|r| r.id == id && !r.restored && r.method == "trash")
-        .ok_or(ExecError::UnknownId)?;
-    if fs::symlink_metadata(&r.original).is_ok() {
-        return Err(io::Error::new(
-            io::ErrorKind::AlreadyExists,
-            "something already exists at the original location",
-        )
-        .into());
-    }
-    if fs::symlink_metadata(&r.trashed_to).is_err() {
-        return Err(io::Error::new(io::ErrorKind::NotFound, "it is no longer in the Trash").into());
-    }
-    fs::rename(&r.trashed_to, &r.original)?;
-    r.restored = true;
-    journal.append(&r)?;
-    Ok(r)
 }
 
 #[cfg(test)]
@@ -903,6 +1043,62 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    #[test]
+    fn manual_items_need_explicit_picks_and_never_go_permanent() {
+        use crate::schema::Risk;
+        use crate::suggest::{Context, Exec, How, Item, Source, Suggestion};
+        let s = sandbox();
+        let a = s.home.join("Library/Caches/model-a");
+        fs::create_dir_all(&a).unwrap();
+        let sug = Suggestion {
+            id: "m".into(),
+            name: "m".into(),
+            description: String::new(),
+            category: String::new(),
+            risk: Risk::Manual,
+            risk_reason: String::new(),
+            regenerates: None,
+            docs: None,
+            bytes: 0,
+            exact: true,
+            items: vec![Item {
+                path: a.clone(),
+                ..Default::default()
+            }],
+            how: How::default(),
+            blocked_by: Vec::new(),
+            apps_to_close: Vec::new(),
+            notes: Vec::new(),
+            source: Source::Builtin,
+            exec: Exec::RemoveItems,
+        };
+        let ctx = Context {
+            home: s.home.clone(),
+            env: Vec::new(),
+            now: 0,
+            processes: Vec::new(),
+            path_dirs: Vec::new(),
+        };
+        let opts = RunOptions {
+            permanent: true,
+            source: "t".into(),
+        };
+        let r = run_suggestion(&sug, &ctx, &s.trash, &s.journal, &opts, None);
+        assert_eq!(r.done, 0, "no bulk removal of manual items");
+        assert!(a.exists());
+        // With an explicit pick it runs, and the checks refuse because the sandbox
+        // lives under /private: what matters is that nothing was deleted permanently.
+        let r = run_suggestion(
+            &sug,
+            &ctx,
+            &s.trash,
+            &s.journal,
+            &opts,
+            Some(std::slice::from_ref(&a)),
+        );
+        assert_eq!(r.method, "trash", "manual never goes permanent");
     }
 
     #[test]

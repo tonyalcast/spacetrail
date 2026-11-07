@@ -36,7 +36,7 @@ That command checks the schema, resolves every path inside a sandbox (`SPACETRAI
 |---|---|---|---|---|
 | `safe` | Fully regenerable automatically, no user data, negligible impact | `delete_contents`, `trash`, `command` | eligible (if enabled in config) | `--apply` (interactive) or `--apply --yes` |
 | `review` | Regenerable but costly, or might contain something wanted | `delete_contents`, `trash`, `command` | **never** | interactive only; `--yes` requires `--cleaner <id>` explicitly |
-| `manual` | User data or expensive assets | `manual` only. If `cleaners.manual_mode = "trash_per_item"`, the TUI also offers per-item Trash (typed confirmation, never permanent) | **never** | n/a, spacetrail only measures and explains |
+| `manual` | User data or expensive assets | `manual` only in TOML; the app can remove items the user picks one by one, through the tool's own uninstaller (built-in per-cleaner logic) or the Trash, never permanently. If `cleaners.manual_mode = "trash_per_item"`, the TUI also offers per-item Trash (typed confirmation, never permanent) | **never** | n/a, spacetrail only measures and explains |
 
 The validator rejects combinations outside this table (e.g. a `manual` cleaner with a `command` action).
 

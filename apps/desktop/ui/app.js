@@ -411,102 +411,180 @@ function updateSim() {
   $("sim-selected").textContent = bytes(sel);
   $("sim-free").textContent = `${bytes(free + sel)} (${pct(free + sel, total)}%)`;
   $("simbar").hidden = sel === 0 || state.view !== "free";
-  const runnable = r.suggestions.filter((s) => state.selected.has(s.id) && stepPlan(s).run).length;
+  const runnable = r.suggestions.filter((s) => state.selected.has(s.id) && (stepPlan(s).run || stepPlan(s).manual)).length;
   $("clean-btn").disabled = runnable === 0;
   $("clean-btn").textContent = runnable ? `Clean selected (${runnable})…` : "Nothing runnable selected";
 }
 
 // ───────────────────────── clean selected ─────────────────────────
+/// "Your call" items the user ticked in the plan, by suggestion id.
+const picks = new Map();
+const pickedOf = (s) => picks.get(s.id) || new Set();
+const tool = (argv) => argv[0].split("/").pop();
+
 /// How spacetrail would carry out a suggestion (decided by the backend), or why not.
 function stepPlan(s) {
-  if (s.risk === "manual") return { run: false, icon: "🔒", how: "Not run: “your call” items are never cleaned automatically" };
-  if (s.blocked_by?.length) return { run: true, icon: "⏸", how: `Close ${s.blocked_by.join(", ")} first (checked again when cleaning)` };
   const n = s.items.length;
-  switch (s.exec?.kind) {
-    case "remove_items": return { run: true, icon: "🗑", how: `${$("cl-permanent").checked ? "Delete permanently" : "Move to the Trash"}: ${n} item${n === 1 ? "" : "s"}` };
-    case "command": return { run: true, icon: "▶", how: "Run ", code: s.exec.argv.map((a, i) => (i === 0 ? a.split("/").pop() : a)).join(" ") };
+  if (s.exec?.kind === "none" || !s.exec) return { run: false, icon: "✋", how: "Not run: spacetrail has no automatic way; see the instructions" };
+  if (s.risk === "manual") {
+    const k = pickedOf(s).size;
+    if (s.exec.kind === "command") return { run: k > 0, icon: "🔒", how: k ? "Run " : "Your call: tick to confirm, then it runs ", code: s.exec.argv.map((a, i) => (i ? a : tool(s.exec.argv))).join(" "), manual: true };
+    return { run: k > 0, icon: "🔒", how: k ? `${k} picked: removed with the tool's uninstaller or moved to the Trash (never permanent)` : "Your call: pick what to remove below", manual: true };
+  }
+  const pre = s.blocked_by?.length ? `Close ${s.blocked_by.join(", ")} first (checked again when cleaning) · ` : "";
+  switch (s.exec.kind) {
+    case "remove_items": return { run: true, icon: s.blocked_by?.length ? "⏸" : "🗑", how: `${pre}${$("cl-permanent").checked ? "Delete permanently" : "Move to the Trash"}: ${n} item${n === 1 ? "" : "s"}` };
+    case "command": return { run: true, icon: s.blocked_by?.length ? "⏸" : "▶", how: `${pre}Run `, code: s.exec.argv.map((a, i) => (i ? a : tool(s.exec.argv))).join(" ") };
     case "remove_worktrees": return { run: true, icon: "⎇", how: `Remove ${n} git worktree${n === 1 ? "" : "s"} (git refuses if there are uncommitted changes; branches are kept)` };
-    default: return { run: false, icon: "✋", how: "Not run: spacetrail has no automatic way; see the instructions" };
+    default: return { run: false, icon: "✋", how: "Not run" };
   }
 }
 
 let cleanupResults = null;
-function chosenSuggestions() {
-  return state.report ? state.report.suggestions.filter((s) => state.selected.has(s.id)) : [];
-}
+const chosenSuggestions = () => (state.report ? state.report.suggestions.filter((s) => state.selected.has(s.id)) : []);
 function openCleanup() {
   cleanupResults = null;
   renderCleanupPlan();
   $("cleanup").showModal();
 }
+
+function manualPicker(s) {
+  // Commands (e.g. docker volume prune) are confirmed with one tick; items one by one.
+  const list = s.exec.kind === "command" ? [{ path: `cmd:${s.id}`, bytes: s.bytes, note: "Confirm running this command" }] : s.items;
+  const sel = pickedOf(s);
+  return el("ul", { class: "picks" }, list.map((i) => {
+    const box = el("input", { type: "checkbox", disabled: i.protected ? "" : null });
+    box.checked = sel.has(i.path);
+    box.addEventListener("change", () => {
+      const set = new Set(pickedOf(s));
+      if (box.checked) set.add(i.path); else set.delete(i.path);
+      picks.set(s.id, set);
+      renderCleanupPlan();
+    });
+    const how = i.protected ? `kept: ${i.protected}` : i.argv ? `${tool(i.argv)} ${i.argv.slice(1, 3).join(" ")}` : s.exec.kind === "command" ? "" : "Trash";
+    return el("li", { class: i.protected ? "skip" : "" },
+      el("label", {}, box, el("span", { class: "pk-name", text: i.note || tilde(i.path), title: i.path }), el("span", { class: "pk-how", text: how })),
+      el("span", { class: "pk-size", text: bytes(i.bytes) }));
+  }));
+}
+
 function renderCleanupPlan() {
   const chosen = chosenSuggestions();
   const runnable = chosen.filter((s) => stepPlan(s).run);
-  const bytesRun = runnable.reduce((a, s) => a + s.bytes, 0);
+  const sizeOf = (s) => (s.risk === "manual" && s.exec?.kind !== "command" ? s.items.filter((i) => pickedOf(s).has(i.path)).reduce((a, i) => a + i.bytes, 0) : s.bytes);
+  const bytesRun = runnable.reduce((a, s) => a + sizeOf(s), 0);
   $("cl-title").textContent = "Clean selected";
   $("cl-sub").textContent = `${runnable.length} of ${chosen.length} selected will run · about ${bytes(bytesRun)}`;
   $("cl-steps").replaceChildren(...chosen.map((s) => {
     const p = stepPlan(s);
-    return el("li", { class: p.run ? "" : "skip", "data-id": s.id },
-      el("span", { class: "st-icon", text: p.icon }),
-      el("div", {}, el("div", { class: "st-name", text: s.name }), el("div", { class: "st-how" }, p.how, p.code ? el("code", { text: p.code }) : null)),
-      el("span", { class: "st-size", text: `${s.exact ? "" : "≤ "}${bytes(s.bytes)}` }));
+    const body = el("div", {}, el("div", { class: "st-name", text: s.name }), el("div", { class: "st-how" }, p.how, p.code ? el("code", { text: p.code }) : null));
+    if (p.manual) body.append(manualPicker(s));
+    return el("li", { class: p.run || p.manual ? "" : "skip", "data-id": s.id },
+      el("span", { class: "st-icon", text: p.icon }), body,
+      el("span", { class: "st-size", text: `${s.exact ? "" : "≤ "}${bytes(p.manual ? sizeOf(s) || s.bytes : s.bytes)}` }));
   }));
-  const anyRemove = runnable.some((s) => s.exec?.kind === "remove_items");
-  $("cl-permanent-row").hidden = !anyRemove;
-  $("cl-note").textContent = $("cl-permanent").checked
-    ? "Items are deleted for good. Tool commands (Yarn, Docker…) free space right away too."
-    : "Items go to the Trash: the space is freed when you empty it, and you can undo. Tool commands (Yarn, Docker…) free space right away.";
+  $("cl-permanent-row").hidden = !runnable.some((s) => s.exec?.kind === "remove_items" && s.risk !== "manual");
+  $("cl-note").textContent = ($("cl-permanent").checked
+    ? "Safe/Review items are deleted for good. "
+    : "Items go to the Trash: the space is freed when you empty it, and you can undo. ") +
+    "Tool commands free space right away. “Your call” items run only if you tick them, and never permanently.";
   $("cl-summary").textContent = "";
   $("cl-go").hidden = false;
   $("cl-go").disabled = runnable.length === 0;
   $("cl-go").textContent = `Clean ${bytes(bytesRun)}`;
   $("cl-cancel").textContent = "Cancel";
+  $("cl-cancel").disabled = false;
+  $("cl-permanent").disabled = false;
   $("cl-undo").hidden = true;
 }
+
+/// Item picks to send for a set of suggestions (manual ones only).
+function pickMap(list) {
+  const m = {};
+  for (const s of list) if (s.risk === "manual") m[s.id] = s.exec?.kind === "command" ? s.items.map((i) => i.path) : [...pickedOf(s)];
+  return m;
+}
+
+async function execute(list, items) {
+  for (const s of list) {
+    const icon = document.querySelector(`#cl-steps li[data-id="${CSS.escape(s.id)}"] .st-icon`);
+    if (icon) icon.replaceChildren(el("span", { class: "spinner" }));
+  }
+  return invoke("run_cleanup", { ids: list.map((s) => s.id), permanent: $("cl-permanent").checked, items });
+}
+
+function showResult(r) {
+  const li = document.querySelector(`#cl-steps li[data-id="${CSS.escape(r.id)}"]`);
+  if (!li) return;
+  li.classList.remove("skip");
+  li.querySelector(".st-icon").textContent = r.ok ? "✅" : r.done ? "⚠️" : r.method === "skipped" && !r.failed ? "➖" : "❌";
+  const body = li.children[1];
+  for (const x of body.querySelectorAll(".st-msg, .picks, .retry")) x.remove();
+  body.querySelector(".st-how").textContent = r.done
+    ? `${r.done} done${r.failed ? `, ${r.failed} failed` : ""}${r.bytes ? ` · ${bytes(r.bytes)}` : ""}`
+    : r.method === "skipped" ? "Skipped" : "Failed";
+  if (r.messages.length) body.append(el("div", { class: `st-msg ${r.ok ? "" : "err"}`, text: r.messages.join("\n") }));
+  if (!r.ok && (r.failed || r.retry_items.length)) {
+    const btn = el("button", { class: "btn retry", type: "button", text: "Retry" });
+    btn.addEventListener("click", () => retryStep(r, btn));
+    body.append(btn);
+  }
+}
+
+async function retryStep(prev, btn) {
+  const s = state.report.suggestions.find((x) => x.id === prev.id);
+  if (!s) return;
+  btn.disabled = true;
+  const items = prev.retry_items.length ? { [s.id]: prev.retry_items } : pickMap([s]);
+  try {
+    const [r] = await execute([s], items);
+    cleanupResults = cleanupResults.map((x) => (x.id === r.id ? mergeResult(x, r) : x));
+    showResult(r);
+    afterRun();
+  } catch (e) {
+    btn.disabled = false;
+    toast(String(e));
+  }
+}
+/// A retry only re-runs what failed: keep the earlier successes.
+const mergeResult = (a, b) => ({ ...b, done: a.done + b.done, bytes: a.bytes + b.bytes, undo_ids: [...a.undo_ids, ...b.undo_ids], ok: b.failed === 0 && a.done + b.done > 0 });
+
 async function runCleanup() {
-  const ids = chosenSuggestions().filter((s) => stepPlan(s).run).map((s) => s.id);
-  if (!ids.length) return;
+  const list = chosenSuggestions().filter((s) => stepPlan(s).run);
+  if (!list.length) return;
   $("cl-go").disabled = true;
   $("cl-cancel").disabled = true;
   $("cl-permanent").disabled = true;
-  for (const id of ids) {
-    const li = document.querySelector(`#cl-steps li[data-id="${CSS.escape(id)}"] .st-icon`);
-    if (li) li.replaceChildren(el("span", { class: "spinner" }));
-  }
   try {
-    cleanupResults = await invoke("run_cleanup", { ids, permanent: $("cl-permanent").checked });
+    cleanupResults = await execute(list, pickMap(list));
   } catch (e) {
     $("cl-summary").textContent = String(e);
     $("cl-go").disabled = false; $("cl-cancel").disabled = false; $("cl-permanent").disabled = false;
     return;
   }
+  cleanupResults.forEach(showResult);
+  $("cl-go").hidden = true;
+  $("cl-cancel").disabled = false;
+  $("cl-cancel").textContent = "Close & rescan";
+  $("cl-permanent").disabled = false;
+  afterRun();
+}
+
+function afterRun() {
   let freed = 0, trashed = 0, failed = 0;
   for (const r of cleanupResults) {
-    const li = document.querySelector(`#cl-steps li[data-id="${CSS.escape(r.id)}"]`);
     if (r.method === "trash") trashed += r.bytes; else freed += r.bytes;
-    failed += r.failed;
-    if (!li) continue;
-    li.querySelector(".st-icon").textContent = r.ok ? "✅" : r.done ? "⚠️" : "❌";
-    const how = li.querySelector(".st-how");
-    how.textContent = r.done ? `${r.done} done${r.failed ? `, ${r.failed} failed` : ""}` : r.method === "skipped" ? "Skipped" : "Failed";
-    if (r.messages.length) li.children[1].append(el("div", { class: `st-msg ${r.ok ? "" : "err"}`, text: r.messages.join("\n") }));
+    failed += r.ok ? 0 : r.failed;
   }
   const parts = [];
   if (freed) parts.push(`Freed about ${bytes(freed)}`);
   if (trashed) parts.push(`moved ${bytes(trashed)} to the Trash (empty it to free the space)`);
   if (failed) parts.push(`${failed} failed`);
   $("cl-summary").textContent = parts.length ? `${parts.join(" · ")}.` : "Nothing was cleaned.";
-  $("cl-go").hidden = true;
-  $("cl-cancel").disabled = false;
-  $("cl-cancel").textContent = "Close & rescan";
-  $("cl-permanent").disabled = false;
-  const undoIds = cleanupResults.flatMap((r) => r.undo_ids);
-  $("cl-undo").hidden = undoIds.length === 0;
-  // Done suggestions leave the list right away; a rescan refreshes the rest.
+  $("cl-undo").hidden = cleanupResults.flatMap((r) => r.undo_ids).length === 0;
   const doneIds = new Set(cleanupResults.filter((r) => r.ok).map((r) => r.id));
   state.report.suggestions = state.report.suggestions.filter((s) => !doneIds.has(s.id));
-  for (const id of doneIds) state.selected.delete(id);
+  for (const id of doneIds) { state.selected.delete(id); picks.delete(id); }
   recomputeTotals();
   renderSuggestions();
   invoke("get_disk_status").then((st) => { state.status = st; renderSummary(); updateSim(); });
@@ -520,6 +598,7 @@ async function undoCleanup() {
   const ids = (cleanupResults || []).flatMap((r) => r.undo_ids);
   let ok = 0, bad = 0;
   for (const id of ids) { try { await invoke("undo_trash", { id }); ok++; } catch { bad++; } }
+  for (const r of cleanupResults) r.undo_ids = [];
   $("cl-undo").hidden = true;
   $("cl-summary").textContent = `Put back ${ok} item${ok === 1 ? "" : "s"}${bad ? `, ${bad} could not be restored` : ""}.`;
 }
@@ -807,7 +886,9 @@ function mockInvoke(cmd, args) {
       sg("yarn", "Yarn cache", "safe", 7.6 * GB, "/Users/demo/Library/Caches/Yarn", { exact: false, exec: { kind: "command", argv: ["/opt/homebrew/bin/yarn", "cache", "clean"] } }),
       sg("wt", "Git worktrees", "review", 32.8 * GB, "/Users/demo/Documents/dev/repo/.claude/worktrees", { exec: { kind: "remove_worktrees" }, items: [{ path: "/Users/demo/Documents/dev/repo/.claude/worktrees/a", bytes: 3e9, note: "branch a · last change 9 days ago" }, { path: "/Users/demo/Documents/dev/repo/.claude/worktrees/b", bytes: 2e9 }] }),
       sg("docker", "Docker build cache", "review", 18.4 * GB, "/Users/demo/Library/Containers/com.docker.docker/Data/vms/0/data/Docker.raw", { exact: false, blocked_by: ["Docker"], exec: { kind: "command", argv: ["/usr/local/bin/docker", "builder", "prune", "--force"] } }),
-      sg("game", "Large app data", "manual", 73 * GB, "/Users/demo/Library/Application Support/SomeGame"),
+      sg("game", "Large app data", "manual", 73 * GB, "/Users/demo/Library/Application Support/SomeGame", { exec: { kind: "remove_items" } }),
+      sg("ollama-models", "Ollama models", "manual", 9 * GB, "/x", { exec: { kind: "remove_items" }, items: [{ path: "/Users/demo/.ollama/models/manifests/registry.ollama.ai/library/llama3/8b", bytes: 4.7e9, note: "model llama3:8b", argv: ["/opt/homebrew/bin/ollama", "rm", "llama3:8b"] }, { path: "/Users/demo/.ollama/models/manifests/registry.ollama.ai/library/qwen/7b", bytes: 4.3e9, note: "model qwen:7b", argv: ["/opt/homebrew/bin/ollama", "rm", "qwen:7b"] }] }),
+      sg("nvm-node-versions", "Node.js versions (nvm)", "manual", 0.6e9, "/x", { exec: { kind: "remove_items" }, items: [{ path: "/Users/demo/.nvm/versions/node/v16.20.2", bytes: 2e8 }, { path: "/Users/demo/.nvm/versions/node/v22.22.2", bytes: 4e8, protected: "your default Node version" }] }),
     ],
     advice: ["Swap uses 15 GB because memory is under pressure.", "Coding agents create a git worktree per task."], catalog_problems: [] };
   const delay = (v, ms) => new Promise((r) => setTimeout(() => r(v), ms));
@@ -824,7 +905,10 @@ function mockInvoke(cmd, args) {
     case "explain": return delay({ provider: "Anthropic", model: "claude-opus-5-5", answer: { what: "A disk image of an old app installer.", origin: "Downloaded with Safari; the app it installs is already in /Applications.", verdict: "safe", impact: "Nothing breaks; you can download it again if needed.", how_to_remove: "Move it to the Trash.", confidence: "high" }, sent: { path: tilde(args.path), kind: "file" } }, 600);
     case "trash_item": return delay({ id: "1-1", original: args.path, trashed_to: "/Users/demo/.Trash/x" }, 300);
     case "undo_trash": return delay({ id: args.id, restored: true }, 200);
-    case "run_cleanup": return delay(args.ids.map((id) => ({ id, name: id, method: id === "yarn" ? "command" : "trash", ok: id !== "wt", done: id === "wt" ? 1 : 1, failed: id === "wt" ? 1 : 0, bytes: 5e9, messages: id === "wt" ? ["/Users/demo/…/b: git refused: contains modified or untracked files"] : [], undo_ids: id === "vscode-logs" ? ["1"] : [] })), 900);
+    case "run_cleanup": return delay(args.ids.map((id) => {
+      const fail = id === "wt" && !(args.items?.wt);
+      return { id, name: id, method: id === "yarn" ? "command" : "trash", ok: !fail, done: 1, failed: fail ? 1 : 0, bytes: 5e9, messages: fail ? ["/Users/demo/…/b: git refused: contains modified or untracked files"] : [], undo_ids: id === "vscode-logs" ? ["1"] : [], retry_items: fail ? ["/Users/demo/Documents/dev/repo/.claude/worktrees/b"] : [] };
+    }), 900);
     default: return delay(null, 10);
   }
 }

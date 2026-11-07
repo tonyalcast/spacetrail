@@ -1,6 +1,6 @@
 schema = 1
 id = "huggingface-cache"
-version = "1.0.0"
+version = "1.1.0"
 name = "Hugging Face models"
 description = "Models and datasets downloaded by Hugging Face libraries."
 risk = "manual"
@@ -13,9 +13,10 @@ paths = ["${HF_HOME:-~/.cache/huggingface}/hub/*"]
 [[action]]
 type = "manual"
 instructions = """
-Inspect cached models and delete the ones you no longer use.
+List cached models and datasets, then remove the ones you no longer use with `hf cache rm` (the `huggingface-cli` command is deprecated). `hf cache prune` removes revisions no branch points to.
 """
 suggested_commands = [
-  ["hf", "cache", "scan"],
-  ["huggingface-cli", "delete-cache"],
+  ["hf", "cache", "ls"],
+  ["hf", "cache", "rm", "model/<org>/<name>", "--yes"],
+  ["hf", "cache", "prune"],
 ]

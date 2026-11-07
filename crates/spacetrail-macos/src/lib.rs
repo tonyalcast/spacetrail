@@ -16,6 +16,7 @@ pub mod metadata;
 pub mod mounts;
 mod probe;
 pub mod process;
+pub mod simulators;
 pub mod system;
 pub mod trash;
 pub mod volume;

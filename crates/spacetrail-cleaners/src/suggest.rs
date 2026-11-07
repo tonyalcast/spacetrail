@@ -29,7 +29,7 @@ pub enum Source {
 }
 
 /// One measured thing inside a suggestion.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct Item {
     /// Absolute path.
     pub path: PathBuf,
@@ -40,6 +40,16 @@ pub struct Item {
     /// Extra context (e.g. "branch feature-x, last touched 40 days ago").
     #[serde(skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
+    /// The tool's own way to remove this item (absolute program path), used
+    /// instead of the Trash (e.g. `ollama rm llama3:8b`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub argv: Option<Vec<String>>,
+    /// Files that belong with the item and go with it (e.g. an AVD's `.ini`).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub companions: Vec<PathBuf>,
+    /// Why this item must not be removed (e.g. the active Node version).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub protected: Option<String>,
 }
 
 /// How to free the space.
@@ -175,7 +185,19 @@ impl Context {
         // nvm: newest installed Node first.
         if let Ok(rd) = std::fs::read_dir(home.join(".nvm/versions/node")) {
             let mut v: Vec<PathBuf> = rd.flatten().map(|e| e.path().join("bin")).collect();
-            v.sort();
+            // Numeric version order (v9 < v22), newest first.
+            v.sort_by_key(|p| {
+                p.parent()
+                    .and_then(|d| d.file_name())
+                    .map(|n| {
+                        n.to_string_lossy()
+                            .trim_start_matches('v')
+                            .split('.')
+                            .map(|x| x.parse::<u32>().unwrap_or(0))
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default()
+            });
             path_dirs.extend(v.into_iter().rev());
         }
         Self {
@@ -432,6 +454,7 @@ pub fn evaluate(
                 bytes,
                 newest_mtime: m.newest_mtime,
                 note: None,
+                ..Default::default()
             });
         }
     }

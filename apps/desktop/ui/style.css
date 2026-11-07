@@ -293,3 +293,14 @@ main { max-width: 1120px; margin: 0 auto; padding: 4px 22px 90px; display: grid;
 .steps .st-size { font-weight: 650; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .steps .st-msg { color: var(--muted); font-size: 12px; white-space: pre-wrap; max-height: 90px; overflow: auto; margin-top: 4px; }
 .steps .st-msg.err { color: var(--crit); }
+
+.picks { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 2px; }
+.picks li { display: flex; justify-content: space-between; gap: 10px; align-items: center; padding: 3px 6px; border-radius: 7px; }
+.picks li:hover { background: var(--hover); }
+.picks li.skip { opacity: .55; }
+.picks label { display: flex; gap: 8px; align-items: center; min-width: 0; cursor: pointer; }
+.picks input { width: 15px; height: 15px; accent-color: var(--accent); flex: none; }
+.pk-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pk-how { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.pk-size { font-variant-numeric: tabular-nums; font-size: 12.5px; white-space: nowrap; }
+.btn.retry { margin-top: 6px; padding: 3px 12px; font-size: 12.5px; }

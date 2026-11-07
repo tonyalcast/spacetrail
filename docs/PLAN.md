@@ -113,7 +113,7 @@ Priority order, matching the author's machine: Docker (build cache, system prune
 |---|---|---|
 | Q1 | Git remote | **Local only for now.** The remote is added later; CI (M0.2) is written but not run until then. |
 | Q2 | Bundle / agent identifier | **`io.github.<owner>.spacetrail`**. `<owner>` is fixed when the remote exists; it's centralized in one constant. |
-| Q3 | `manual` risk items | **Both modes, selectable**: `cleaners.manual_mode = "explain"` (default, measure and explain only) or `"trash_per_item"` (TUI only, one item at a time, Trash only, typed confirmation of the item name; never permanent, never `--yes`). Overridable per session from the TUI Cleanup screen. |
+| Q3 | `manual` risk items | **Superseded 2026-11-05:** the app removes manual items the user picks one by one (tool uninstaller or Trash, never permanent; protected items kept). Original decision: **Both modes, selectable**: `cleaners.manual_mode = "explain"` (default, measure and explain only) or `"trash_per_item"` (TUI only, one item at a time, Trash only, typed confirmation of the item name; never permanent, never `--yes`). Overridable per session from the TUI Cleanup screen. |
 | Q4 | Toolchain | **`rustup update stable`** approved; edition 2024, MSRV 1.85. |
 | Q5 | crates.io name | **Don't publish until Phase 5.** |
 | Q6 | Project code roots | **All of them, selectable when needed**: default `projects.roots = ["~/Documents/dev", "~/Code", "~/Developer", "~/Projects", "~/src", "~/dev"]`; `--roots <PATH>...` per run; `projects.scope = "roots" \| "home"` (whole home, slower, always excluding `~/Library` and cloud storage); TUI root picker. |

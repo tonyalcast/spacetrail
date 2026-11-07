@@ -256,6 +256,7 @@ async fn run_cleanup(
     app: AppHandle,
     ids: Vec<String>,
     permanent: bool,
+    items: Option<std::collections::HashMap<String, Vec<String>>>,
 ) -> Result<Vec<spacetrail_cleaners::executor::StepResult>, String> {
     let report = app
         .state::<LastReport>()
@@ -288,12 +289,18 @@ async fn run_cleanup(
                     name: s.name.clone(),
                 },
             );
+            // Item picks only narrow the suggestion; paths not in the report are ignored.
+            let only: Option<Vec<PathBuf>> = items
+                .as_ref()
+                .and_then(|m| m.get(&s.id))
+                .map(|v| v.iter().map(PathBuf::from).collect());
             out.push(spacetrail_cleaners::executor::run_suggestion(
                 s,
                 &ctx,
                 &spacetrail_cleaners::executor::FinderTrash,
                 &journal,
                 &opts,
+                only.as_deref(),
             ));
         }
         Ok(out)
