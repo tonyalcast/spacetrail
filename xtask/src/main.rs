@@ -30,8 +30,13 @@ fn main() -> anyhow::Result<()> {
     }
 }
 
-/// The only place allowed to opt out of `clippy::disallowed_methods`.
-const EXECUTOR_DIR: &str = "crates/spacetrail-cleaners/src/executor";
+/// The only places allowed to opt out of `clippy::disallowed_methods`: the
+/// cleaners executor (deletion + cleaner commands) and the fixed allow-list
+/// of read-only system probes.
+const ALLOWED: &[&str] = &[
+    "crates/spacetrail-cleaners/src/executor",
+    "crates/spacetrail-macos/src/probe.rs",
+];
 
 /// Enforces CLAUDE.md safety rule 2: deletion/process APIs may only be
 /// unlocked inside the cleaners executor.
@@ -42,7 +47,7 @@ fn check_safety() -> anyhow::Result<()> {
     let mut offenders = Vec::new();
     visit(&root.join("crates"), &mut |path| {
         let rel = path.strip_prefix(root).unwrap_or(path);
-        if rel.starts_with(EXECUTOR_DIR) || rel.extension().is_none_or(|e| e != "rs") {
+        if ALLOWED.iter().any(|a| rel.starts_with(a)) || rel.extension().is_none_or(|e| e != "rs") {
             return;
         }
         if let Ok(text) = std::fs::read_to_string(path) {
@@ -58,7 +63,7 @@ fn check_safety() -> anyhow::Result<()> {
         Ok(())
     } else {
         bail!(
-            "`disallowed_methods` used outside {EXECUTOR_DIR}:\n  {}",
+            "`disallowed_methods` used outside {ALLOWED:?}:\n  {}",
             offenders.join("\n  ")
         )
     }

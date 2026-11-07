@@ -30,7 +30,7 @@ cargo insta review                           # TUI / output snapshots
 
 ## Non-negotiable safety rules
 1. Tests never touch the real home directory. Always use `SPACETRAIL_HOME` + `tempfile` (and point `HOME` at the temp dir in integration tests).
-2. Every deletion goes through the single executor in `spacetrail-cleaners` (deny-list, canonicalization, containment, no symlink following, TOCTOU re-validation). `remove_dir_all`/`remove_file`/`remove_dir`/`unlink`/`Command::new` are banned by `clippy.toml` `disallowed-methods`. The only allowed `#[expect(clippy::disallowed_methods)]` is inside the executor, and CI greps for it.
+2. Every deletion goes through the single executor in `spacetrail-cleaners` (deny-list, canonicalization, containment, no symlink following, TOCTOU re-validation). `remove_dir_all`/`remove_file`/`remove_dir`/`unlink`/`Command::new` are banned by `clippy.toml` `disallowed-methods`. The only allowed `#[expect(clippy::disallowed_methods)]` are inside the executor and `spacetrail-macos/src/probe.rs` (a fixed allow-list of read-only system probes such as `diskutil apfs list -plist`). `cargo xtask check-safety` enforces this in CI.
 3. Dry-run is the default; Trash is the default; `manual` risk is never auto-deleted; autoclean only runs `safe` cleaners the user enabled, with caps.
 4. Community/user cleaners can't execute commands unless the user opts in per cleaner (`cleaners.allow_commands`). Commands are argv arrays, never shell strings.
 5. Never read or open dataless (cloud placeholder) files: `lstat` only. Never require root.

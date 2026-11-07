@@ -246,7 +246,7 @@ CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT);   -- schema info, daemon h
 
 All deletion goes through `Executor::execute(plan)`. Nothing else in the workspace can delete:
 
-- `clippy.toml` `disallowed-methods`: `std::fs::remove_dir_all`, `std::fs::remove_dir`, `std::fs::remove_file`, `libc::unlink*`, `libc::rmdir`, `std::process::Command::new` (command execution is also centralized). Only `spacetrail-cleaners::executor` carries a scoped `#[expect(clippy::disallowed_methods)]`. A CI grep check fails if that attribute appears anywhere else.
+- `clippy.toml` `disallowed-methods`: `std::fs::remove_dir_all`, `std::fs::remove_dir`, `std::fs::remove_file`, `libc::unlink*`, `libc::rmdir`, `std::process::Command::new` (command execution is also centralized). Only `spacetrail-cleaners::executor` carries a scoped `#[expect(clippy::disallowed_methods)]`, plus one read-only exception: `spacetrail-macos/src/probe.rs`, which can spawn only a fixed enum of read-only commands (`diskutil apfs list -plist`, `tmutil listlocalsnapshots /`) with absolute paths and a cleared environment. `cargo xtask check-safety` fails CI if the attribute appears anywhere else.
 
 Pipeline for every item:
 

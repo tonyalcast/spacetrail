@@ -25,6 +25,11 @@ anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 thiserror = "2"
 rayon = "1.12"
+libc = "0.2"
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", default-features = false, features = ["std"] }
+plist = "1"
+serde = { version = "1", features = ["derive"] }
 # dev
 criterion = "0.7"
 proptest = "1"

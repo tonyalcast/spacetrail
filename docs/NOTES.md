@@ -56,3 +56,29 @@ Findings from experiments on real macOS behavior. Every entry: date, machine, wh
 `cargo bench -p spacetrail-core --bench scan` with `SPACETRAIL_BENCH_FILES=200000` (empty files, 100 per dir, 10 subdirs per dir, warm cache): **170 ms per scan ≈ 1.17 M files/s**. Extrapolated, 1 M files take ≈ 0.9 s. The brief's target (≥ 1 M files in < 60 s) is met with a wide margin on synthetic trees. Real trees (deeper, larger dirs, cold cache) are measured in M1.3. `getattrlistbulk` (S4) is therefore an optimization, not a requirement.
 
 Design note (dataless directories): a cloud-only *directory* is not listed at all. On File Provider domains, `readdir` on a dataless directory can itself trigger materialization of the listing. Spike S1 must also evaluate `setiopolicy_np(IOPOL_TYPE_VFS_MATERIALIZE_DATALESS_FILES, IOPOL_SCOPE_PROCESS, IOPOL_MATERIALIZE_DATALESS_FILES_OFF)` as a process-wide belt-and-braces guarantee: with it, any accidental access fails with an error instead of downloading.
+
+## 2026-10-01 — M1.2 spikes S1–S3 (author's machine, no Full Disk Access)
+
+Run with `cargo run --release -p spacetrail-macos --example spikes -- s1|s2|s3`.
+
+**S3 — capacity sources.** All of these agree to within rounding:
+
+| Source | `/` and `/System/Volumes/Data` |
+|---|---|
+| `statfs` total | 494 GB (container size) |
+| `statfs` used = `(f_blocks − f_bfree)·bsize` | 440 GB, the **container** used, identical for every volume of the container (not per-volume!) |
+| `statfs` free (`f_bavail`) | 54.7 GB |
+| `NSURLVolumeAvailableCapacityForImportantUsageKey` | 56.2 GB (≈ what Finder shows) |
+| `…ForOpportunisticUsageKey` | 44.9 GB |
+| purgeable estimate (important − free) | 1.47 GB |
+| `diskutil apfs list -plist` container used / overhead | 440 GB / 160 MB not attributed to any volume |
+
+Per-volume usage is only available from `diskutil apfs list -plist` (no root needed). Data 405 GB, System 12.6 GB, Preboot 10.8 GB, **VM 8.59 GB**, Recovery 2.6 GB, Update 6 MB. The sealed system volume `disk3s1` is mounted at `/` as snapshot `disk3s1s1`, so the mount lookup also matches `<volume>s<N>`.
+
+**Big finding: the VM (swap) volume went from 33.3 GB to 8.59 GB within ~1 hour** (free space went from ~29 GiB to 54.7 GB) with no user cleanup. Swap is the most volatile consumer on this machine, and very likely part of the "disk fills up uncontrollably" feeling. Consequences: (1) `status` must show the VM volume prominently, with an explanation; (2) the daemon's 5-minute volume samples must store per-volume consumption, so that history can tell swap growth from data growth; (3) Phase 4 should correlate swap growth with memory-hungry processes (Docker VM, Ollama/LM Studio, browsers).
+
+**S2 — TCC without FDA.** The FDA probe correctly reports `Denied` (on `TCC.db`). Scanning `~/Library` read 207 GB in 1.0 M files in 10.1 s and hit **438 unreadable directories**. Most are `Group Containers/group.*` (several third-party apps), plus `Mail`, `Messages`, `Safari`, `Photos`, `Mobile Documents` (iCloud Drive), `Application Support/{AddressBook, CloudDocs, FileProvider, Knowledge, com.apple.TCC}`, `Biome`, `Trial`, `Suggestions`, `Metadata/CoreSpotlight`, several `Caches/com.apple.*`. `readdir` returns `EPERM` (→ `PermissionDenied`), never an empty listing, so "unknown size" detection works as designed.
+
+**S1 — dataless.** Inconclusive without FDA: `~/Library/Mobile Documents` itself is TCC-protected, and `~/Library/CloudStorage` is empty on this machine. `setiopolicy_np(…MATERIALIZE_DATALESS_FILES_OFF)` succeeds (unit test). Re-run S1 after FDA is granted.
+
+**S4 — `getattrlistbulk`:** deferred. The plain walker already does ~1 M real files in ~10 s (S2), well within budget.
