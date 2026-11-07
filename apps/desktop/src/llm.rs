@@ -23,6 +23,8 @@ const FALLBACK_MODELS: &[&str] = &[
 fn client() -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
         .timeout(Duration::from_secs(180))
+        // Never follow redirects: `x-api-key` is not stripped on a cross-host redirect.
+        .redirect(reqwest::redirect::Policy::none())
         .build()
         .map_err(|e| e.to_string())
 }

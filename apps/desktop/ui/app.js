@@ -31,6 +31,8 @@ const ICON = {
   chevron: '<path d="M6 9l6 6 6-6"/>',
   close: '<path d="M6 6l12 12M18 6L6 18"/>',
 };
+/// Escapes text for the few places that build HTML strings (tooltips). File names come from disk.
+const esc = (t) => String(t).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const svg = (name) => `<svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[name]}</svg>`;
 const iconBtn = (name, tipText, onclick, cls = "") =>
   el("button", { class: `icon-btn ${cls}`, type: "button", "data-tip": tipText, "aria-label": tipText, html: svg(name), onclick });
@@ -269,7 +271,7 @@ function renderTreemap() {
       tip(cell, () => {
         const fr = free > 0 ? `<br>Striped: about ${bytes(free)} could be freed.` : "";
         const hidden = f.state === "unreadable" ? "<br>🔐 macOS hid this folder (size unknown)." : "";
-        return `<b>${tilde(f.path)}</b>${bytes(f.bytes)} · ${pct(f.bytes, ov.totals.alloc)}% of your data · ${f.files.toLocaleString()} files${fr}${hidden}${f.children.length ? "<br>Click to look inside" : ""}`;
+        return `<b>${esc(tilde(f.path))}</b>${bytes(f.bytes)} · ${pct(f.bytes, ov.totals.alloc)}% of your data · ${f.files.toLocaleString()} files${fr}${hidden}${f.children.length ? "<br>Click to look inside" : ""}`;
       });
     } else {
       tip(cell, () => `<b>Files and small folders</b>${bytes(r.n.value)} not shown individually.`);
